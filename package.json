@@ -4,7 +4,7 @@
   "description": "Backend API for Neutral News RSS feed processing and news brief generation",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && echo 'Build completed successfully' && echo 'Current directory:' && pwd && echo 'Dist contents:' && ls -la dist/",
     "postbuild": "node verify-build.js",
     "start": "node dist/index.js",
     "dev": "nodemon src/index.ts",
