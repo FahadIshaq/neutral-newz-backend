@@ -1,6 +1,12 @@
+# Ignore environment files
 .env
+
+# Ignore logs
+*.log
+
+# Ignore node modules
 node_modules/
+
+# Ignore build outputs
 dist/
 build/
-*.log
-.DS_Store
