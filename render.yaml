@@ -3,8 +3,8 @@ services:
     name: neutral-news-backend
     runtime: node
     plan: free
-    buildCommand: chmod +x build-for-render.sh && ./build-for-render.sh
-    startCommand: cd /opt/render/project && pwd && ls -la && echo "Checking build folder:" && ls -la build/ && echo "Checking dist folder:" && ls -la dist/ && echo "Checking src/dist folder:" && ls -la src/dist/ && echo "Starting app from build/index.js..." && node build/index.js
+    buildCommand: npm install && npm run build
+    startCommand: if [ -f "build/index.js" ]; then echo "Starting from build/index.js"; node build/index.js; elif [ -f "dist/index.js" ]; then echo "Starting from dist/index.js"; node dist/index.js; elif [ -f "src/dist/index.js" ]; then echo "Starting from src/dist/index.js"; node src/dist/index.js; else echo "No index.js found. Current directory:"; pwd; ls -la; echo "Checking subdirectories:"; if [ -d "build" ]; then echo "build contents:"; ls -la build/; fi; if [ -d "dist" ]; then echo "dist contents:"; ls -la dist/; fi; if [ -d "src" ]; then echo "src contents:"; ls -la src/; fi; exit 1; fi
     envVars:
       - key: NODE_ENV
         value: production
