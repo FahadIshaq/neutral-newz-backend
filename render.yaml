@@ -3,8 +3,8 @@ services:
     name: neutral-news-backend
     runtime: node
     plan: free
-    buildCommand: cd /opt/render/project && npm install && npm run build
-    startCommand: cd /opt/render/project && node dist/index.js
+    buildCommand: chmod +x build-for-render.sh && ./build-for-render.sh
+    startCommand: if [ -f "dist/index.js" ]; then echo "Starting from dist/index.js"; node dist/index.js; elif [ -f "src/dist/index.js" ]; then echo "Starting from src/dist/index.js"; node src/dist/index.js; else echo "Neither location found. Current directory:"; pwd; ls -la; exit 1; fi
     envVars:
       - key: NODE_ENV
         value: production
