@@ -37,18 +37,23 @@ export class DatabaseService {
   }
 
   async getFeed(id: string): Promise<RSSFeed | null> {
-    const { data, error } = await supabase
-      .from(TABLES.RSS_FEEDS)
-      .select('*')
-      .eq('id', id)
-      .single();
-    
-    if (error) {
-      console.error('Error fetching feed:', error);
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.RSS_FEEDS)
+        .select('*')
+        .eq('id', id)
+        .maybeSingle(); // Use maybeSingle() instead of single() to handle 0 rows gracefully
+      
+      if (error) {
+        console.error('Error fetching feed:', error);
+        return null;
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Exception fetching feed:', error);
       return null;
     }
-    
-    return data;
   }
 
   async updateFeedLastChecked(id: string, lastChecked: Date, lastError?: string): Promise<void> {
@@ -73,31 +78,87 @@ export class DatabaseService {
   async saveArticles(articles: NewsArticle[]): Promise<void> {
     if (articles.length === 0) return;
 
-    const { error } = await supabase
-      .from(TABLES.NEWS_ARTICLES)
-      .upsert(articles.map(article => ({
-        id: article.id,
-        title: article.title,
-        description: article.description,
-        content: article.content,
-        url: article.url,
-        source: article.source,
-        category: article.category,
-        published_at: article.publishedAt.toISOString(),
-        processed_at: article.processedAt.toISOString(),
-        brief_generated: article.briefGenerated,
-        brief_content: article.briefContent,
-        tags: article.tags
-      })), {
-        onConflict: 'id'
-      });
+    // Deduplicate articles by ID and URL to prevent constraint violations
+    const uniqueArticles = this.deduplicateArticles(articles);
     
-    if (error) {
-      console.error('Error saving articles:', error);
-      throw new Error(`Failed to save articles: ${error.message}`);
+    if (uniqueArticles.length === 0) {
+      console.log('No unique articles to save after deduplication');
+      return;
+    }
+
+    console.log(`💾 Attempting to save ${uniqueArticles.length} unique articles (from ${articles.length} total)`);
+
+    // Process articles in smaller batches to avoid constraint violations
+    const batchSize = 50;
+    let savedCount = 0;
+    
+    for (let i = 0; i < uniqueArticles.length; i += batchSize) {
+      const batch = uniqueArticles.slice(i, i + batchSize);
+      
+      try {
+        const { error } = await supabase
+          .from(TABLES.NEWS_ARTICLES)
+          .upsert(batch.map(article => ({
+            id: article.id,
+            title: article.title,
+            description: article.description,
+            content: article.content,
+            url: article.url,
+            source: article.source,
+            category: article.category,
+            published_at: article.publishedAt.toISOString(),
+            processed_at: article.processedAt.toISOString(),
+            brief_generated: article.briefGenerated,
+            brief_content: article.briefContent,
+            tags: article.tags
+          })), {
+            onConflict: 'id',
+            ignoreDuplicates: false
+          });
+        
+        if (error) {
+          console.error(`Error saving batch ${Math.floor(i / batchSize) + 1}:`, error);
+          // Continue with next batch instead of failing completely
+          continue;
+        }
+        
+        savedCount += batch.length;
+        console.log(`✅ Saved batch ${Math.floor(i / batchSize) + 1}: ${batch.length} articles`);
+        
+      } catch (error) {
+        console.error(`Exception saving batch ${Math.floor(i / batchSize) + 1}:`, error);
+        // Continue with next batch
+        continue;
+      }
     }
     
-    console.log(`💾 Saved ${articles.length} articles to database`);
+    console.log(`💾 Successfully saved ${savedCount} out of ${uniqueArticles.length} articles`);
+  }
+
+  /**
+   * Deduplicate articles by ID and URL to prevent constraint violations
+   */
+  private deduplicateArticles(articles: NewsArticle[]): NewsArticle[] {
+    const seenIds = new Set<string>();
+    const seenUrls = new Set<string>();
+    const uniqueArticles: NewsArticle[] = [];
+
+    for (const article of articles) {
+      // Skip if we've already seen this ID or URL
+      if (seenIds.has(article.id) || seenUrls.has(article.url)) {
+        continue;
+      }
+      
+      seenIds.add(article.id);
+      seenUrls.add(article.url);
+      uniqueArticles.push(article);
+    }
+
+    if (uniqueArticles.length < articles.length) {
+      console.log(`🔄 Deduplicated articles: ${articles.length} → ${uniqueArticles.length}`);
+    }
+
+    return uniqueArticles;
   }
 
   async getArticlesByFeed(feedId: string, limit: number = 50): Promise<NewsArticle[]> {

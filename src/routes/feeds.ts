@@ -221,39 +221,198 @@ router.get('/processing-status', async (req: Request, res: Response) => {
   }
 });
 
-// Process all RSS feeds
-router.post('/process-all', async (req: Request, res: Response) => {
-  try {
-    const result = await processingService.processAllFeeds();
-    
-    res.json({
-      success: true,
-      data: result
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: 'Failed to process RSS feeds',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
 // Process single RSS feed
 router.post('/:id/process', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await processingService.processSingleFeed(id);
+    console.log(`🔄 Processing single feed: ${id}`);
     
-    res.json({
-      success: true,
-      data: result
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: 'Feed ID is required',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Set a timeout for the entire processing operation
+    const processingPromise = processingService.processSingleFeed(id);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Processing timeout after 10 minutes')), 600000);
     });
+    
+    const result = await Promise.race([processingPromise, timeoutPromise]);
+    
+    console.log(`✅ Feed processing completed:`, {
+      feedId: id,
+      success: result.success,
+      articlesProcessed: result.articlesProcessed,
+      briefsGenerated: result.briefsGenerated,
+      errors: result.errors?.length || 0
+    });
+    
+    // Debug: Log the raw result object
+    console.log('🔍 Raw result object:', {
+      type: typeof result,
+      keys: Object.keys(result),
+      hasOwnProperty: {
+        timestamp: result.hasOwnProperty('timestamp'),
+        timestampType: typeof result.timestamp,
+        timestampValue: result.timestamp
+      }
+    });
+    
+    // Ensure we always return a valid JSON response
+    res.setHeader('Content-Type', 'application/json');
+    
+    try {
+      // Create a clean, serializable response object
+      const cleanResult = {
+        success: result.success,
+        articlesProcessed: result.articlesProcessed,
+        briefsGenerated: result.briefsGenerated,
+        errors: result.errors || [],
+        timestamp: result.timestamp instanceof Date ? result.timestamp.toISOString() : new Date().toISOString(),
+        llmTokensUsed: result.llmTokensUsed || 0,
+        llmCostUsd: result.llmCostUsd || 0,
+        modelVersion: result.modelVersion || 'gpt-4o-mini',
+        promptVersion: result.promptVersion || 'fact-check-v1.0'
+      };
+      
+      // Debug: Log the clean result to ensure it's serializable
+      console.log('📤 Clean result object:', cleanResult);
+      
+      // Test JSON serialization before sending
+      const testSerialization = JSON.stringify(cleanResult);
+      console.log('🧪 JSON serialization test passed:', testSerialization.substring(0, 200) + '...');
+      
+      // Check if response has already been sent
+      if (res.headersSent) {
+        console.error('❌ Response already sent, cannot send again');
+        return;
+      }
+      
+      res.json({
+        success: true,
+        data: cleanResult,
+        timestamp: new Date().toISOString()
+      });
+      
+      console.log('✅ Response sent successfully');
+      
+    } catch (jsonError) {
+      console.error('❌ JSON serialization failed:', jsonError);
+      console.error('❌ Result object that failed:', result);
+      console.error('❌ Result object type:', typeof result);
+      console.error('❌ Result object keys:', Object.keys(result));
+      
+      // Check if response has already been sent
+      if (res.headersSent) {
+        console.error('❌ Response already sent, cannot send error response');
+        return;
+      }
+      
+      // Fallback response if JSON serialization fails
+      res.status(500).json({
+        success: false,
+        error: 'Response serialization failed',
+        details: 'The processing completed but response could not be serialized',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
   } catch (error) {
+    console.error(`❌ Error processing feed ${req.params.id}:`, error);
+    
+    // Log the full error for debugging
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+    }
+    
+    // Ensure we always return JSON with proper headers
+    res.setHeader('Content-Type', 'application/json');
     res.status(500).json({
       success: false,
       error: 'Failed to process RSS feed',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Process all RSS feeds
+router.post('/process-all', async (req: Request, res: Response) => {
+  try {
+    console.log('🔄 Starting processing of all feeds...');
+    
+    const result = await processingService.processAllFeeds();
+    
+    console.log(`✅ All feeds processing completed:`, {
+      success: result.success,
+      articlesProcessed: result.articlesProcessed,
+      briefsGenerated: result.briefsGenerated,
+      errors: result.errors?.length || 0
+    });
+    
+    try {
+      // Create a clean, serializable response object
+      const cleanResult = {
+        success: result.success,
+        articlesProcessed: result.articlesProcessed,
+        briefsGenerated: result.briefsGenerated,
+        errors: result.errors || [],
+        timestamp: result.timestamp instanceof Date ? result.timestamp.toISOString() : new Date().toISOString(),
+        llmTokensUsed: result.llmTokensUsed || 0,
+        llmCostUsd: result.llmCostUsd || 0,
+        modelVersion: result.modelVersion || 'gpt-4o-mini',
+        promptVersion: result.promptVersion || 'fact-check-v1.0'
+      };
+      
+      // Debug: Log the clean result to ensure it's serializable
+      console.log('📤 Sending response:', JSON.stringify(cleanResult, null, 2));
+      
+      res.json({
+        success: true,
+        data: cleanResult,
+        timestamp: new Date().toISOString()
+      });
+      
+      console.log('✅ Response sent successfully');
+      
+    } catch (jsonError) {
+      console.error('❌ JSON serialization failed:', jsonError);
+      console.error('❌ Result object that failed:', result);
+      
+      // Fallback response if JSON serialization fails
+      res.status(500).json({
+        success: false,
+        error: 'Response serialization failed',
+        details: 'The processing completed but response could not be serialized',
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error processing all feeds:', error);
+    
+    // Log the full error for debugging
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+    }
+    
+    // Ensure we always return JSON
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process RSS feeds',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
     });
   }
 });

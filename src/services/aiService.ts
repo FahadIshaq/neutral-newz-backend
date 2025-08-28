@@ -262,35 +262,40 @@ ${this.composeOutputFromParts({
 
   // Enhanced processing method
   async processRSSArticle(rawArticle: any) {
-    const draft = await this.rewriteArticle(rawArticle);
-    let working = draft;
+    try {
+      console.log('🤖 AI: Starting RSS article processing...');
+      
+      const draft = await this.rewriteArticle(rawArticle);
+      let working = draft;
 
-    // Bias pass
-    const bias = this.checkSubjectivity(working.brief);
-    if (bias.hasBias) {
-      const revision = await this.callModel([
-        { role: "system", content: FACT_CHECK_SYSTEM_PROMPT },
-        { role: "user", content:
+      // Bias pass
+      const bias = this.checkSubjectivity(working.brief);
+      if (bias.hasBias) {
+        console.log('🤖 AI: Detected bias, attempting revision...');
+        const revision = await this.callModel([
+          { role: "system", content: FACT_CHECK_SYSTEM_PROMPT },
+          { role: "user", content:
 `The brief contains biased terms: ${bias.biasedTerms.join(", ")}.
 Rewrite neutrally, 180–260 words. Preserve citations.
 
 ${this.composeOutputFromParts(working)}` }
-      ]);
-      working = this.parseGPTResponse(revision) || working;
-    }
+        ]);
+        working = this.parseGPTResponse(revision) || working;
+      }
 
-    // Word count validation and expansion - ensure minimum requirement is met
-    let attempts = 0;
-    const maxAttempts = 3;
-    
-    while (this.countWords(working.brief) < 175 && attempts < maxAttempts) {
-      attempts++;
-      const currentWordCount = this.countWords(working.brief);
-      console.log(`📝 Brief too short (${currentWordCount} words), expansion attempt ${attempts}/${maxAttempts}...`);
+      // Word count validation and expansion - ensure minimum requirement is met
+      let attempts = 0;
+      const maxAttempts = 3;
       
-      const expansion = await this.callModel([
-        { role: "system", content: "You are a content expansion specialist. Your task is to expand the given brief to AT LEAST 180 words while maintaining factual accuracy. This is a strict requirement." },
-        { role: "user", content:
+      while (this.countWords(working.brief) < 175 && attempts < maxAttempts) {
+        attempts++;
+        const currentWordCount = this.countWords(working.brief);
+        console.log(`📝 Brief too short (${currentWordCount} words), expansion attempt ${attempts}/${maxAttempts}...`);
+        
+        try {
+          const expansion = await this.callModel([
+            { role: "system", content: "You are a content expansion specialist. Your task is to expand the given brief to AT LEAST 180 words while maintaining factual accuracy. This is a strict requirement." },
+            { role: "user", content:
 `The following brief is too short (${currentWordCount} words). You MUST expand it to AT LEAST 180 words by adding relevant factual details, context, and background information. 
 
 Current brief:
@@ -303,36 +308,43 @@ IMPORTANT: Your expanded brief MUST be at least 180 words. Add relevant details 
 - Additional factual information
 
 Expand this brief to 180+ words while keeping all existing information.` }
-      ]);
-      
-      const expandedContent = this.parseGPTResponse(expansion);
-      if (expandedContent && expandedContent.brief) {
-        working.brief = expandedContent.brief;
-        const newWordCount = this.countWords(working.brief);
-        console.log(`✅ Expansion attempt ${attempts}: ${currentWordCount} → ${newWordCount} words`);
-        
-        if (newWordCount >= 175) {
-          console.log(`🎯 Word count requirement met: ${newWordCount} words`);
+          ]);
+          
+          const expandedContent = this.parseGPTResponse(expansion);
+          if (expandedContent && expandedContent.brief) {
+            working = expandedContent;
+            console.log(`📝 Expansion successful: ${this.countWords(working.brief)} words`);
+          } else {
+            console.log(`📝 Expansion failed, using original content`);
+            break;
+          }
+        } catch (expansionError) {
+          console.error(`📝 Expansion attempt ${attempts} failed:`, expansionError);
           break;
         }
       }
-    }
-    
-    // Final word count check
-    const finalWordCount = this.countWords(working.brief);
-    if (finalWordCount < 175) {
-      console.log(`⚠️ Final word count still too low: ${finalWordCount} words. Adding fallback content...`);
       
-      // Add fallback content to meet minimum word count
-      const fallbackContent = ` This development represents a significant development in the region and has broader implications for international relations and regional stability. The situation continues to evolve as various stakeholders respond to these developments.`;
-      
-      working.brief += fallbackContent;
-      working.wordCount = this.countWords(working.brief); // Update the wordCount property
-      const adjustedWordCount = working.wordCount;
-      console.log(`✅ Fallback content added: ${finalWordCount} → ${adjustedWordCount} words`);
-    }
+      // Final word count check
+      const finalWordCount = this.countWords(working.brief);
+      if (finalWordCount < 175) {
+        console.log(`⚠️ Final word count still too low: ${finalWordCount} words. Adding fallback content...`);
+        
+        // Add fallback content to meet minimum word count
+        const fallbackContent = ` This development represents a significant development in the region and has broader implications for international relations and regional stability. The situation continues to evolve as various stakeholders respond to these developments.`;
+        
+        working.brief += fallbackContent;
+        working.wordCount = this.countWords(working.brief); // Update the wordCount property
+        const adjustedWordCount = working.wordCount;
+        console.log(`✅ Fallback content added: ${finalWordCount} → ${adjustedWordCount} words`);
+      }
 
-    return await this.gateArticle(working, rawArticle, REWRITER_CONFIG);
+      console.log('🤖 AI: RSS article processing completed successfully');
+      return await this.gateArticle(working, rawArticle, REWRITER_CONFIG);
+      
+    } catch (error) {
+      console.error('🤖 AI: Error in processRSSArticle:', error);
+      throw new Error(`AI processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async rewriteArticle(rawArticle: any) {

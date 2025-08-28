@@ -20,13 +20,25 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// CORS middleware
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'https://neutral-newz-backend.onrender.com',
+  credentials: true
+}));
 
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
+
+// Ensure all responses are JSON
+app.use((req, res, next) => {
+  // Set JSON content type for all responses
+  res.setHeader('Content-Type', 'application/json');
   next();
 });
 
@@ -83,6 +95,22 @@ app.get('/api/system/status', async (req, res) => {
     const processingService = new ProcessingService(rssService, databaseService, briefService, aiService);
     const processingStatus = processingService.getProcessingStatus();
     
+    // Get RSS feed health status
+    const feeds = await databaseService.getFeeds();
+    const feedHealth = feeds.map(feed => ({
+      id: feed.id,
+      name: feed.name,
+      url: feed.url,
+      category: feed.category,
+      active: feed.active,
+      lastChecked: feed.lastChecked,
+      lastError: feed.lastError,
+      status: feed.lastError ? 'error' : 'healthy'
+    }));
+    
+    // Get circuit breaker status
+    const circuitBreakerStatus = rssService.getCircuitBreakerStatus();
+    
     // Comprehensive system status
     const systemStatus = {
       success: true,
@@ -114,6 +142,16 @@ app.get('/api/system/status', async (req, res) => {
           },
           lastCheck: new Date().toISOString()
         },
+        rssFeeds: {
+          status: 'operational',
+          total: feeds.length,
+          active: feeds.filter(f => f.active).length,
+          healthy: feeds.filter(f => f.active && !f.lastError).length,
+          error: feeds.filter(f => f.active && f.lastError).length,
+          circuitBreakers: Object.keys(circuitBreakerStatus).length,
+          feeds: feedHealth,
+          circuitBreakerStatus
+        },
         cronJobs: {
           status: 'active',
           rssProcessing: processingStatus.isProcessing ? 'active' : 'idle',
@@ -143,6 +181,36 @@ app.get('/api/system/status', async (req, res) => {
 app.use('/api/feeds', authenticateToken, requireAdmin, feedsRouter);
 app.use('/api/briefs', authenticateToken, requireAdmin, briefsRouter);
 app.use('/api/brief-review', authenticateToken, requireAdmin, briefReviewRouter);
+
+// Circuit breaker management endpoint (admin only)
+app.post('/api/system/reset-circuit-breaker/:feedId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { feedId } = req.params;
+    
+    if (!feedId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Feed ID is required'
+      });
+    }
+    
+    const rssService = new RSSService();
+    rssService.resetCircuitBreaker(feedId);
+    
+    res.json({
+      success: true,
+      message: `Circuit breaker reset for feed ${feedId}`,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reset circuit breaker',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -186,19 +254,54 @@ app.use('*', (req, res) => {
 
 // Error handling middleware
 app.use((error: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', error);
-  
-  res.status(500).json({
-    success: false,
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+  console.error('💥 Global error handler caught:', {
+    error: error.message,
+    stack: error.stack,
+    url: req.originalUrl,
+    method: req.method,
+    timestamp: new Date().toISOString()
   });
+  
+  // Ensure response hasn't been sent yet
+  if (res.headersSent) {
+    return next(error);
+  }
+  
+  // Always set JSON content type
+  res.setHeader('Content-Type', 'application/json');
+  
+  // Always return JSON response
+  try {
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
+      timestamp: new Date().toISOString(),
+      path: req.originalUrl
+    });
+  } catch (jsonError) {
+    // If JSON serialization fails, send a simple text response
+    console.error('💥 JSON serialization failed:', jsonError);
+    res.status(500).send('Internal server error - JSON serialization failed');
+  }
 });
 
 // Initialize database and start server
 async function startServer() {
   try {
     console.log('🚀 Starting Neutral News Backend...');
+    
+    // Set up global error handlers
+    process.on('uncaughtException', (error) => {
+      console.error('💥 Uncaught Exception:', error);
+      console.error('Stack trace:', error.stack);
+      // Don't exit immediately, let the error handler deal with it
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+      // Don't exit immediately, let the error handler deal with it
+    });
     
     // Test database connection
     await testDatabaseConnection();
@@ -233,7 +336,7 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`🌐 Health check: http://localhost:${PORT}/health`);
-      console.log(`🔐 Admin panel: http://localhost:3000 (requires authentication)`);
+      console.log(`🔐 Admin panel: https://neutral-newz-backend.onrender.com (requires authentication)`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

@@ -44,34 +44,79 @@ export class ProcessingService {
 
     this.isProcessing = true;
     const startTime = Date.now();
+    const errors: string[] = [];
     
     try {
-      console.log('Starting RSS feed processing...');
+      console.log('🚀 Starting RSS feed processing...');
       
       // Fetch all RSS feeds
       const feedResponses = await this.rssService.fetchAllFeeds();
       
-      // Convert RSS items to news articles
-      const allArticles: NewsArticle[] = [];
-      for (const [feedId, response] of feedResponses) {
-        // Get the feed to access its category
-        const feed = await this.databaseService.getFeed(feedId);
-        const category = feed?.category || 'US_NATIONAL';
-        
-        const articles = this.rssService.convertToNewsArticles(
-          feedId, 
-          response, 
-          category
-        );
-        allArticles.push(...articles);
+      if (feedResponses.size === 0) {
+        console.log('⚠️ No RSS feeds were successfully fetched');
+        return {
+          success: false,
+          articlesProcessed: 0,
+          briefsGenerated: 0,
+          errors: ['No RSS feeds were successfully fetched'],
+          timestamp: new Date(),
+          llmTokensUsed: 0,
+          llmCostUsd: 0,
+          modelVersion: 'gpt-4o-mini',
+          promptVersion: 'fact-check-v1.0'
+        };
       }
       
-      console.log(`Processed ${allArticles.length} articles from RSS feeds`);
+      // Convert RSS items to news articles
+      const allArticles: NewsArticle[] = [];
+      const failedFeeds: string[] = [];
+      
+      for (const [feedId, response] of feedResponses) {
+        try {
+          // Get the feed to access its category
+          const feed = await this.databaseService.getFeed(feedId);
+          if (!feed) {
+            console.warn(`⚠️ Feed ${feedId} not found in database, skipping`);
+            continue;
+          }
+          
+          const category = feed.category || 'US_NATIONAL';
+          
+          const articles = this.rssService.convertToNewsArticles(
+            feedId, 
+            response, 
+            category
+          );
+          
+          if (articles.length > 0) {
+            allArticles.push(...articles);
+            console.log(`📰 Processed ${articles.length} articles from ${feed.name}`);
+          } else {
+            console.log(`ℹ️ No articles found in ${feed.name}`);
+          }
+          
+        } catch (error) {
+          const errorMsg = `Failed to process feed ${feedId}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          console.error(`❌ ${errorMsg}`);
+          errors.push(errorMsg);
+          failedFeeds.push(feedId);
+        }
+      }
+      
+      console.log(`📊 Processing Summary: ${allArticles.length} articles from ${feedResponses.size - failedFeeds.length} feeds, ${failedFeeds.length} feeds failed`);
       
       // Save articles to database
+      let savedArticlesCount = 0;
       if (allArticles.length > 0) {
-        await this.databaseService.saveArticles(allArticles);
-        console.log('Articles saved to database');
+        try {
+          await this.databaseService.saveArticles(allArticles);
+          savedArticlesCount = allArticles.length;
+          console.log('✅ Articles saved to database');
+        } catch (error) {
+          const errorMsg = `Failed to save articles: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          console.error(`❌ ${errorMsg}`);
+          errors.push(errorMsg);
+        }
       }
       
       // Generate news briefs using enhanced AI service
@@ -79,35 +124,49 @@ export class ProcessingService {
       let totalTokensUsed = 0;
       let totalCostUsd = 0;
       
-      for (const article of allArticles) {
-        try {
-          const aiResult = await this.aiService.generateBrief([article]);
-          briefs.push(aiResult.brief);
-          totalTokensUsed += aiResult.tokensUsed;
-          totalCostUsd += aiResult.costUsd;
-        } catch (error) {
-          console.error(`Failed to generate AI brief for article ${article.id}:`, error);
-          // Fallback to basic brief generation
-          const basicBriefs = this.briefService.generateBriefs([article]);
-          briefs.push(...basicBriefs);
+      if (savedArticlesCount > 0) {
+        console.log('🤖 Generating AI briefs...');
+        
+        for (const article of allArticles) {
+          try {
+            const aiResult = await this.aiService.generateBrief([article]);
+            briefs.push(aiResult.brief);
+            totalTokensUsed += aiResult.tokensUsed;
+            totalCostUsd += aiResult.costUsd;
+          } catch (error) {
+            console.error(`Failed to generate AI brief for article ${article.id}:`, error);
+            // Fallback to basic brief generation
+            try {
+              const basicBriefs = this.briefService.generateBriefs([article]);
+              briefs.push(...basicBriefs);
+            } catch (fallbackError) {
+              console.error(`Fallback brief generation also failed for article ${article.id}:`, fallbackError);
+            }
+          }
         }
-      }
-      
-      console.log(`Generated ${briefs.length} news briefs (${briefs.length - allArticles.length} using AI)`);
-      
-      // Save briefs to database
-      if (briefs.length > 0) {
-        await this.databaseService.saveBriefs(briefs);
-        console.log('Briefs saved to database');
+        
+        console.log(`✅ Generated ${briefs.length} briefs (${briefs.length - allArticles.length} using AI)`);
+        
+        // Save briefs to database
+        if (briefs.length > 0) {
+          try {
+            await this.databaseService.saveBriefs(briefs);
+            console.log('✅ Briefs saved to database');
+          } catch (error) {
+            const errorMsg = `Failed to save briefs: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            console.error(`❌ ${errorMsg}`);
+            errors.push(errorMsg);
+          }
+        }
       }
       
       const processingTime = Date.now() - startTime;
       
       const result: ProcessingResult = {
-        success: true,
-        articlesProcessed: allArticles.length,
+        success: errors.length === 0,
+        articlesProcessed: savedArticlesCount,
         briefsGenerated: briefs.length,
-        errors: [],
+        errors,
         timestamp: new Date(),
         llmTokensUsed: totalTokensUsed,
         llmCostUsd: totalCostUsd,
@@ -116,16 +175,25 @@ export class ProcessingService {
       };
       
       // Save processing log to database
-      await this.databaseService.saveProcessingLog(result, processingTime);
+      try {
+        await this.databaseService.saveProcessingLog(result, processingTime);
+      } catch (error) {
+        console.error('Failed to save processing log:', error);
+      }
       
-      console.log(`Processing completed in ${processingTime}ms`);
-      console.log(`Articles processed: ${result.articlesProcessed}`);
-      console.log(`Briefs generated: ${result.briefsGenerated}`);
+      console.log(`🎯 Processing completed in ${processingTime}ms`);
+      console.log(`📊 Final Results: ${result.articlesProcessed} articles, ${result.briefsGenerated} briefs`);
+      if (errors.length > 0) {
+        console.log(`⚠️ Errors encountered: ${errors.length}`);
+        errors.forEach(error => console.log(`   - ${error}`));
+      }
       
       return result;
       
     } catch (error) {
-      console.error('Error during RSS processing:', error);
+      const errorMsg = `Critical error during RSS processing: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error(`💥 ${errorMsg}`);
+      errors.push(errorMsg);
       
       const processingTime = Date.now() - startTime;
       
@@ -133,16 +201,20 @@ export class ProcessingService {
         success: false,
         articlesProcessed: 0,
         briefsGenerated: 0,
-        errors: [error instanceof Error ? error.message : 'Unknown error'],
+        errors,
         timestamp: new Date(),
         llmTokensUsed: 0,
         llmCostUsd: 0,
-        modelVersion: 'gpt-4o',
-        promptVersion: 'bias-strip-v2.1'
+        modelVersion: 'gpt-4o-mini',
+        promptVersion: 'fact-check-v1.0'
       };
       
-      // Save error log to database
-      await this.databaseService.saveProcessingLog(result, processingTime);
+      // Save processing log to database
+      try {
+        await this.databaseService.saveProcessingLog(result, processingTime);
+      } catch (logError) {
+        console.error('Failed to save error processing log:', logError);
+      }
       
       return result;
       
@@ -152,85 +224,240 @@ export class ProcessingService {
   }
 
   async processSingleFeed(feedId: string): Promise<ProcessingResult> {
-    const startTime = Date.now();
-    const feed = await this.databaseService.getFeed(feedId);
-    if (!feed) {
-      throw new Error(`Feed not found: ${feedId}`);
-    }
-
+    // Set up process-level error handler for this specific operation
+    const originalUnhandledRejection = process.listeners('unhandledRejection');
+    const originalUncaughtException = process.listeners('uncaughtException');
+    
+    const cleanup = () => {
+      // Restore original handlers
+      process.removeAllListeners('unhandledRejection');
+      process.removeAllListeners('uncaughtException');
+      originalUnhandledRejection.forEach(listener => process.on('unhandledRejection', listener));
+      originalUncaughtException.forEach(listener => process.on('uncaughtException', listener));
+    };
+    
     try {
-      console.log(`Processing single feed: ${feed.name}`);
+      const startTime = Date.now();
+      const errors: string[] = [];
       
-      const feedResponse = await this.rssService.fetchFeed(feed);
-      if (!feedResponse) {
-        throw new Error(`Failed to fetch feed: ${feed.name}`);
-      }
-      
-      const articles = this.rssService.convertToNewsArticles(
-        feedId, 
-        feedResponse, 
-        feed.category
-      );
-      
-      // Save articles to database
-      if (articles.length > 0) {
-        await this.databaseService.saveArticles(articles);
-      }
-      
-      // Generate news briefs using enhanced AI service
-      const briefs: any[] = [];
-      let totalTokensUsed = 0;
-      let totalCostUsd = 0;
-      
-      for (const article of articles) {
-        try {
-          const aiResult = await this.aiService.generateBrief([article]);
-          briefs.push(aiResult.brief);
-          totalTokensUsed += aiResult.tokensUsed;
-          totalCostUsd += aiResult.costUsd;
-        } catch (error) {
-          console.error(`Failed to generate AI brief for article ${article.id}:`, error);
-          // Fallback to basic brief generation
-          const basicBriefs = this.briefService.generateBriefs([article]);
-          briefs.push(...basicBriefs);
-        }
-      }
-      
-      // Save briefs to database
-      if (briefs.length > 0) {
-        await this.databaseService.saveBriefs(briefs);
-      }
-      
-      const processingTime = Date.now() - startTime;
-      
-      const result: ProcessingResult = {
-        success: true,
-        articlesProcessed: articles.length,
-        briefsGenerated: briefs.length,
-        errors: [],
+      // Default result in case of complete failure
+      const defaultResult: ProcessingResult = {
+        success: false,
+        articlesProcessed: 0,
+        briefsGenerated: 0,
+        errors: ['Processing failed due to unexpected error'],
         timestamp: new Date(),
-        llmTokensUsed: totalTokensUsed,
-        llmCostUsd: totalCostUsd,
+        llmTokensUsed: 0,
+        llmCostUsd: 0,
         modelVersion: 'gpt-4o-mini',
         promptVersion: 'fact-check-v1.0'
       };
       
-      return result;
-      
-    } catch (error) {
-      console.error(`Error processing feed ${feedId}:`, error);
-      
-      return {
-        success: false,
-        articlesProcessed: 0,
-        briefsGenerated: 0,
-        errors: [error instanceof Error ? error.message : 'Unknown error'],
-        timestamp: new Date(),
-        llmTokensUsed: 0,
-        llmCostUsd: 0,
-        modelVersion: 'gpt-4o',
-        promptVersion: 'bias-strip-v2.1'
-      };
+      try {
+        console.log(`🔄 Processing single feed: ${feedId}`);
+        
+        const feed = await this.databaseService.getFeed(feedId);
+        if (!feed) {
+          const errorMsg = `Feed not found: ${feedId}`;
+          errors.push(errorMsg);
+          return {
+            ...defaultResult,
+            errors: [errorMsg]
+          };
+        }
+
+        console.log(`📰 Processing feed: ${feed.name} (${feed.url})`);
+        
+        const feedResponse = await this.rssService.fetchFeed(feed);
+        if (!feedResponse) {
+          const errorMsg = `Failed to fetch feed: ${feed.name}`;
+          errors.push(errorMsg);
+          return {
+            ...defaultResult,
+            errors: [errorMsg]
+          };
+        }
+        
+        console.log(`📄 Converting ${feedResponse.items.length} RSS items to articles...`);
+        const articles = this.rssService.convertToNewsArticles(
+          feedId, 
+          feedResponse, 
+          feed.category
+        );
+        
+        console.log(`💾 Saving ${articles.length} articles to database...`);
+        // Save articles to database
+        if (articles.length > 0) {
+          try {
+            await this.databaseService.saveArticles(articles);
+            console.log(`✅ Successfully saved ${articles.length} articles`);
+          } catch (saveError) {
+            console.error(`❌ Failed to save articles:`, saveError);
+            const errorMsg = `Database save failed: ${saveError instanceof Error ? saveError.message : 'Unknown error'}`;
+            errors.push(errorMsg);
+            return {
+              ...defaultResult,
+              articlesProcessed: articles.length,
+              errors: [errorMsg]
+            };
+          }
+        }
+        
+        // Generate news briefs using enhanced AI service
+        const briefs: any[] = [];
+        let totalTokensUsed = 0;
+        let totalCostUsd = 0;
+        
+        if (articles.length > 0) {
+          console.log(`🤖 Generating AI briefs for ${articles.length} articles...`);
+          
+          let consecutiveFailures = 0;
+          const maxConsecutiveFailures = 5; // Circuit breaker threshold
+          
+          for (let i = 0; i < articles.length; i++) {
+            const article = articles[i];
+            console.log(`🤖 Processing article ${i + 1}/${articles.length}: ${article.title.substring(0, 50)}...`);
+            
+            try {
+              console.log(`🤖 Starting AI processing for article: ${article.id}`);
+              
+              // Add timeout to prevent hanging
+              const aiProcessingPromise = this.aiService.generateBrief([article]);
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error('AI processing timeout after 60 seconds')), 60000);
+              });
+              
+              const aiResult = await Promise.race([aiProcessingPromise, timeoutPromise]);
+              briefs.push(aiResult.brief);
+              totalTokensUsed += aiResult.tokensUsed;
+              totalCostUsd += aiResult.costUsd;
+              console.log(`✅ AI brief generated for article: ${article.id}`);
+              
+              // Reset consecutive failures on success
+              consecutiveFailures = 0;
+              
+            } catch (error) {
+              consecutiveFailures++;
+              console.error(`❌ Failed to generate AI brief for article ${article.id} (failure ${consecutiveFailures}/${maxConsecutiveFailures}):`, error);
+              
+              // Check circuit breaker
+              if (consecutiveFailures >= maxConsecutiveFailures) {
+                console.error(`🚫 Circuit breaker triggered after ${consecutiveFailures} consecutive failures. Skipping remaining articles.`);
+                const errorMsg = `Circuit breaker triggered: Too many consecutive AI processing failures`;
+                errors.push(errorMsg);
+                break;
+              }
+              
+              // Log detailed error information
+              if (error instanceof Error) {
+                console.error('Error details:', {
+                  message: error.message,
+                  stack: error.stack,
+                  name: error.name
+                });
+              }
+              
+              // Fallback to basic brief generation
+              try {
+                console.log(`🔄 Attempting fallback brief generation for article: ${article.id}`);
+                const basicBriefs = this.briefService.generateBriefs([article]);
+                briefs.push(...basicBriefs);
+                console.log(`✅ Fallback briefs generated for article: ${article.id}`);
+              } catch (fallbackError) {
+                console.error(`💥 Fallback brief generation also failed for article ${article.id}:`, fallbackError);
+                
+                // Create a minimal brief to prevent complete failure
+                try {
+                  const minimalBrief = {
+                    id: `fallback-${article.id}-${Date.now()}`,
+                    title: article.title,
+                    summary: `Brief summary of: ${article.title}`,
+                    sourceArticles: [article.id],
+                    category: article.category,
+                    publishedAt: new Date(),
+                    tags: article.tags || [],
+                    status: 'pending',
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                  };
+                  briefs.push(minimalBrief);
+                  console.log(`🆘 Created minimal fallback brief for article: ${article.id}`);
+                } catch (minimalError) {
+                  console.error(`💀 Even minimal brief creation failed for article ${article.id}:`, minimalError);
+                  // Continue with next article instead of failing completely
+                }
+              }
+            }
+          }
+          
+          console.log(`✅ Generated ${briefs.length} briefs (${briefs.length - articles.length} using fallbacks)`);
+          
+          // Save briefs to database
+          if (briefs.length > 0) {
+            try {
+              console.log(`💾 Saving ${briefs.length} briefs to database...`);
+              await this.databaseService.saveBriefs(briefs);
+              console.log(`✅ Successfully saved ${briefs.length} briefs`);
+            } catch (saveError) {
+              console.error(`❌ Failed to save briefs:`, saveError);
+              
+              // Log detailed error information
+              if (saveError instanceof Error) {
+                console.error('Save error details:', {
+                  message: saveError.message,
+                  stack: saveError.stack,
+                  name: saveError.name
+                });
+              }
+              
+              const errorMsg = `Brief save failed: ${saveError instanceof Error ? saveError.message : 'Unknown error'}`;
+              errors.push(errorMsg);
+              return {
+                ...defaultResult,
+                articlesProcessed: articles.length,
+                briefsGenerated: briefs.length,
+                errors: [errorMsg]
+              };
+            }
+          }
+        }
+        
+        const processingTime = Date.now() - startTime;
+        
+        const result: ProcessingResult = {
+          success: errors.length === 0,
+          articlesProcessed: articles.length,
+          briefsGenerated: briefs.length,
+          errors,
+          timestamp: new Date(),
+          llmTokensUsed: totalTokensUsed,
+          llmCostUsd: totalCostUsd,
+          modelVersion: 'gpt-4o-mini',
+          promptVersion: 'fact-check-v1.0'
+        };
+        
+        console.log(`🎯 Single feed processing completed in ${processingTime}ms`);
+        return result;
+        
+      } catch (error) {
+        const processingTime = Date.now() - startTime;
+        console.error(`💥 Error processing feed ${feedId}:`, error);
+        
+        // Add the error to the errors array
+        if (error instanceof Error) {
+          errors.push(error.message);
+        } else {
+          errors.push('Unknown error occurred');
+        }
+        
+        return {
+          ...defaultResult,
+          errors,
+          timestamp: new Date()
+        };
+      }
+    } finally {
+      cleanup();
     }
   }
 

@@ -46,14 +46,14 @@ export class AuthService {
     );
   }
 
-  static async createUser(userData: RegisterData): Promise<{ success: boolean; user?: User; error?: string }> {
+  static async registerUser(userData: RegisterData): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
       // Check if user already exists
       const { data: existingUser, error: checkError } = await supabase
         .from('admin_users')
         .select('*')
         .or(`username.eq.${userData.username},email.eq.${userData.email}`)
-        .single();
+        .maybeSingle(); // Use maybeSingle() to handle case where user doesn't exist
 
       if (existingUser) {
         return { 
@@ -75,7 +75,7 @@ export class AuthService {
           role: 'admin'
         })
         .select()
-        .single();
+        .single(); // Keep single() here since we're inserting and expecting exactly one result
 
       if (createError) {
         throw new Error(`Failed to create user: ${createError.message}`);
@@ -103,7 +103,7 @@ export class AuthService {
         .from('admin_users')
         .select('*')
         .eq('username', credentials.username)
-        .single();
+        .maybeSingle(); // Use maybeSingle() to handle case where user doesn't exist
 
       if (findError || !user) {
         return { 
@@ -150,7 +150,7 @@ export class AuthService {
         .from('admin_users')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle(); // Use maybeSingle() to handle case where user doesn't exist
 
       if (error || !user) {
         return { 
@@ -181,7 +181,7 @@ export class AuthService {
         .from('admin_users')
         .select('password_hash')
         .eq('id', userId)
-        .single();
+        .maybeSingle(); // Use maybeSingle() to handle case where user doesn't exist
 
       if (findError || !user) {
         return { 

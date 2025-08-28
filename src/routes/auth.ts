@@ -25,7 +25,7 @@ router.post('/register', authenticateToken, requireAdmin, async (req: Request, r
     }
 
     // Create user
-    const result = await AuthService.createUser({ username, email, password });
+    const result = await AuthService.registerUser({ username, email, password });
 
     if (!result.success) {
       return res.status(400).json({
