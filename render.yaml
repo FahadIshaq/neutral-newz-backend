@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: chmod +x build-for-render.sh && ./build-for-render.sh
-    startCommand: if [ -f "dist/index.js" ]; then echo "Starting from dist/index.js"; node dist/index.js; elif [ -f "src/dist/index.js" ]; then echo "Starting from src/dist/index.js"; node src/dist/index.js; else echo "Neither location found. Current directory:"; pwd; ls -la; exit 1; fi
+    startCommand: cd /opt/render/project && pwd && ls -la && echo "Checking build folder:" && ls -la build/ && echo "Checking dist folder:" && ls -la dist/ && echo "Checking src/dist folder:" && ls -la src/dist/ && echo "Starting app from build/index.js..." && node build/index.js
     envVars:
       - key: NODE_ENV
         value: production
