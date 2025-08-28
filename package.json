@@ -2,11 +2,11 @@
   "name": "neutral-news-backend",
   "version": "1.0.0",
   "description": "Backend API for Neutral News RSS feed processing and news brief generation",
-  "main": "build/index.js",
+  "main": "src/dist/index.js",
   "scripts": {
-    "build": "tsc && echo 'Build completed, creating compatibility directories...' && node create-compatibility-dirs.js",
-    "postbuild": "node verify-build.js",
-    "start": "node build/index.js",
+    "build": "tsc",
+    "postbuild": "echo 'Build completed' && ls -la src/dist/",
+    "start": "node src/dist/index.js",
     "dev": "nodemon src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

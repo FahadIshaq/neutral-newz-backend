@@ -3,7 +3,7 @@
     "target": "ES2020",
     "module": "commonjs",
     "lib": ["ES2020"],
-    "outDir": "./build",
+    "outDir": "./src/dist",
     "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
@@ -16,7 +16,7 @@
     "removeComments": false
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "build"],
+  "exclude": ["node_modules", "dist", "build", "src/dist"],
   "ts-node": {
     "esm": false
   }
