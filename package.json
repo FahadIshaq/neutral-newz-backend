@@ -4,8 +4,8 @@
   "description": "Backend API for Neutral News RSS feed processing and news brief generation",
   "main": "build/index.js",
   "scripts": {
-    "build": "tsc",
-    "postbuild": "node verify-build.js && node create-compatibility-dirs.js",
+    "build": "tsc && echo 'Build completed, creating compatibility directories...' && node create-compatibility-dirs.js",
+    "postbuild": "node verify-build.js",
     "start": "node build/index.js",
     "dev": "nodemon src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"

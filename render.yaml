@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: if [ -f "build/index.js" ]; then echo "Starting from build/index.js"; node build/index.js; elif [ -f "dist/index.js" ]; then echo "Starting from dist/index.js"; node dist/index.js; elif [ -f "src/dist/index.js" ]; then echo "Starting from src/dist/index.js"; node src/dist/index.js; else echo "No index.js found. Current directory:"; pwd; ls -la; echo "Checking subdirectories:"; if [ -d "build" ]; then echo "build contents:"; ls -la build/; fi; if [ -d "dist" ]; then echo "dist contents:"; ls -la dist/; fi; if [ -d "src" ]; then echo "src contents:"; ls -la src/; fi; exit 1; fi
+    startCommand: node start-app.js
     envVars:
       - key: NODE_ENV
         value: production
