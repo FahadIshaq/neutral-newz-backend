@@ -25,7 +25,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // CORS middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://neutral-newz-backend.onrender.com',
+  origin: [
+    'http://localhost:3000',  // Local development
+    'https://neutral-newz-backend.onrender.com',  // Deployed backend
+    'https://neutral-newz-admin.vercel.app'
+  ],
   credentials: true
 }));
 

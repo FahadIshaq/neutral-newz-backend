@@ -6,54 +6,61 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-async function checkAdminUser() {
+async function checkAdminUsers() {
   try {
-    console.log('🔍 Checking admin user details...');
+    console.log('🔍 Checking admin users in database...');
     
-    // Get admin user details
-    const { data: user, error } = await supabase
+    // Get all admin users
+    const { data: users, error } = await supabase
       .from('admin_users')
-      .select('*')
+      .select('id, username, email, role, created_at');
+
+    if (error) {
+      console.error('❌ Error fetching admin users:', error);
+      return;
+    }
+
+    if (users && users.length > 0) {
+      console.log(`✅ Found ${users.length} admin user(s):`);
+      users.forEach((user, index) => {
+        console.log(`  ${index + 1}. Username: ${user.username}, Email: ${user.email}, Role: ${user.role}`);
+      });
+    } else {
+      console.log('❌ No admin users found in database');
+    }
+
+    // Test authentication with default credentials
+    console.log('\n🔐 Testing authentication with default credentials...');
+    
+    const bcrypt = require('bcryptjs');
+    const testPassword = 'admin123';
+    
+    // Get admin user
+    const { data: adminUser, error: authError } = await supabase
+      .from('admin_users')
+      .select('username, password_hash')
       .eq('username', 'admin')
       .single();
 
-    if (error) {
-      console.error('❌ Error fetching admin user:', error);
+    if (authError) {
+      console.error('❌ Error fetching admin user:', authError);
       return;
     }
 
-    if (!user) {
-      console.log('❌ Admin user not found');
-      return;
-    }
-
-    console.log('✅ Admin user found:');
-    console.log('   ID:', user.id);
-    console.log('   Username:', user.username);
-    console.log('   Email:', user.email);
-    console.log('   Role:', user.role);
-    console.log('   Created:', user.created_at);
-    console.log('   Password Hash:', user.password_hash.substring(0, 20) + '...');
-
-    // Test password verification
-    const bcrypt = require('bcryptjs');
-    const testPassword = 'admin123';
-    const isPasswordValid = await bcrypt.compare(testPassword, user.password_hash);
-    
-    console.log('\n🔐 Password Test:');
-    console.log('   Test Password:', testPassword);
-    console.log('   Hash Valid:', isPasswordValid);
-    
-    if (isPasswordValid) {
-      console.log('✅ Password hash is correct!');
+    if (adminUser) {
+      const isValidPassword = await bcrypt.compare(testPassword, adminUser.password_hash);
+      if (isValidPassword) {
+        console.log('✅ Default credentials work: admin/admin123');
+      } else {
+        console.log('❌ Default password does not match');
+      }
     } else {
-      console.log('❌ Password hash is incorrect!');
-      console.log('   This means the password was not hashed properly during creation.');
+      console.log('❌ Admin user not found');
     }
-
+    
   } catch (error) {
-    console.error('❌ Error checking admin user:', error);
+    console.error('❌ Failed to check admin users:', error);
   }
 }
 
-checkAdminUser();
+checkAdminUsers();
