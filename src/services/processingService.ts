@@ -39,7 +39,18 @@ export class ProcessingService {
 
   async processAllFeeds(): Promise<ProcessingResult> {
     if (this.isProcessing) {
-      throw new Error('Processing already in progress');
+      console.log('⚠️ Processing already in progress, returning current status');
+      return {
+        success: false,
+        articlesProcessed: 0,
+        briefsGenerated: 0,
+        errors: ['Processing already in progress'],
+        timestamp: new Date(),
+        llmTokensUsed: 0,
+        llmCostUsd: 0,
+        modelVersion: 'gpt-4o-mini',
+        promptVersion: 'fact-check-v1.0'
+      };
     }
 
     this.isProcessing = true;
@@ -49,8 +60,15 @@ export class ProcessingService {
     try {
       console.log('🚀 Starting RSS feed processing...');
       
-      // Fetch all RSS feeds
-      const feedResponses = await this.rssService.fetchAllFeeds();
+      // Fetch all RSS feeds with better error handling
+      let feedResponses: Map<string, any>;
+      try {
+        feedResponses = await this.rssService.fetchAllFeeds();
+      } catch (fetchError) {
+        console.error('❌ Failed to fetch RSS feeds:', fetchError);
+        feedResponses = new Map(); // Empty map to continue processing
+        errors.push(`RSS fetch error: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
+      }
       
       if (feedResponses.size === 0) {
         console.log('⚠️ No RSS feeds were successfully fetched');
@@ -130,17 +148,53 @@ export class ProcessingService {
         for (const article of allArticles) {
           try {
             const aiResult = await this.aiService.generateBrief([article]);
-            briefs.push(aiResult.brief);
-            totalTokensUsed += aiResult.tokensUsed;
-            totalCostUsd += aiResult.costUsd;
+            if (aiResult && aiResult.brief) {
+              briefs.push(aiResult.brief);
+              totalTokensUsed += aiResult.tokensUsed || 0;
+              totalCostUsd += aiResult.costUsd || 0;
+            } else {
+              console.warn(`⚠️ AI brief generation returned empty result for article ${article.id}`);
+              // Create a basic brief manually
+              const basicBrief = {
+                id: `brief-${article.id}`,
+                title: article.title || 'Untitled',
+                summary: article.description || article.content?.substring(0, 300) || 'Content unavailable',
+                sourceArticles: [article.id],
+                category: article.category || 'US_NATIONAL',
+                publishedAt: new Date(),
+                tags: [],
+                status: 'pending',
+                createdAt: new Date(),
+                updatedAt: new Date()
+              };
+              briefs.push(basicBrief);
+            }
           } catch (error) {
-            console.error(`Failed to generate AI brief for article ${article.id}:`, error);
+            console.error(`❌ Failed to generate AI brief for article ${article.id}:`, error);
+            errors.push(`AI brief generation failed for ${article.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            
             // Fallback to basic brief generation
             try {
               const basicBriefs = this.briefService.generateBriefs([article]);
               briefs.push(...basicBriefs);
             } catch (fallbackError) {
-              console.error(`Fallback brief generation also failed for article ${article.id}:`, fallbackError);
+              console.error(`❌ Fallback brief generation also failed for article ${article.id}:`, fallbackError);
+              errors.push(`Fallback brief generation failed for ${article.id}: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown error'}`);
+              
+              // Create a minimal brief to prevent complete failure
+              const minimalBrief = {
+                id: `minimal-${article.id}`,
+                title: article.title || 'Untitled',
+                summary: article.description || 'Content processing failed',
+                sourceArticles: [article.id],
+                category: article.category || 'US_NATIONAL',
+                publishedAt: new Date(),
+                tags: [],
+                status: 'pending',
+                createdAt: new Date(),
+                updatedAt: new Date()
+              };
+              briefs.push(minimalBrief);
             }
           }
         }

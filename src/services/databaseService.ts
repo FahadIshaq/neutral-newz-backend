@@ -161,13 +161,21 @@ export class DatabaseService {
     return uniqueArticles;
   }
 
-  async getArticlesByFeed(feedId: string, limit: number = 50): Promise<NewsArticle[]> {
-    const { data, error } = await supabase
+  async getArticlesByFeed(feedId: string, limit: number = 50, timeRange: number = -1): Promise<NewsArticle[]> {
+    let query = supabase
       .from(TABLES.NEWS_ARTICLES)
       .select('*')
       .eq('source', feedId)
       .order('published_at', { ascending: false })
       .limit(limit);
+    
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       console.error('Error fetching articles by feed:', error);
@@ -190,13 +198,21 @@ export class DatabaseService {
     }));
   }
 
-  async getArticlesByCategory(category: string, limit: number = 100): Promise<NewsArticle[]> {
-    const { data, error } = await supabase
+  async getArticlesByCategory(category: string, limit: number = 100, timeRange: number = -1): Promise<NewsArticle[]> {
+    let query = supabase
       .from(TABLES.NEWS_ARTICLES)
       .select('*')
       .eq('category', category)
       .order('published_at', { ascending: false })
       .limit(limit);
+    
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       console.error('Error fetching articles by category:', error);
@@ -282,64 +298,118 @@ export class DatabaseService {
     }));
   }
 
-  async getBriefsByCategory(category: string, limit: number = 50): Promise<NewsBrief[]> {
-    const { data, error } = await supabase
+  async getBriefsByCategory(category: string, limit: number = 50, timeRange: number = -1): Promise<NewsBrief[]> {
+    let query = supabase
       .from(TABLES.NEWS_BRIEFS)
       .select('*')
       .eq('category', category)
       .order('published_at', { ascending: false })
       .limit(limit);
     
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { data, error } = await query;
+    
     if (error) {
       console.error('Error fetching briefs by category:', error);
       throw new Error(`Failed to fetch briefs by category: ${error.message}`);
     }
     
-    return (data || []).map(brief => ({
-      id: brief.id,
-      title: brief.title,
-      summary: brief.summary,
-      sourceArticles: brief.source_articles,
-      category: brief.category,
-      publishedAt: new Date(brief.published_at),
-      tags: brief.tags || [],
-      status: brief.status || 'pending',
-      reviewedBy: brief.reviewed_by,
-      reviewedAt: brief.reviewed_at ? new Date(brief.reviewed_at) : undefined,
-      reviewNotes: brief.review_notes,
-      llmMetadata: brief.llm_metadata || undefined,
-      createdAt: brief.created_at ? new Date(brief.created_at) : new Date(),
-      updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date()
-    }));
+    return (data || []).map(brief => this.transformBriefData(brief));
   }
 
-  async getLatestBriefs(limit: number = 10): Promise<NewsBrief[]> {
-    const { data, error } = await supabase
+  async getLatestBriefs(limit: number = 10, timeRange: number = -1): Promise<NewsBrief[]> {
+    let query = supabase
       .from(TABLES.NEWS_BRIEFS)
       .select('*')
       .order('published_at', { ascending: false })
       .limit(limit);
+    
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { data, error } = await query;
     
     if (error) {
       console.error('Error fetching latest briefs:', error);
       throw new Error(`Failed to fetch latest briefs: ${error.message}`);
     }
     
-    return (data || []).map(brief => ({
+    return (data || []).map(brief => this.transformBriefData(brief));
+  }
+
+  // Transform database snake_case to TypeScript camelCase
+  private transformBriefData(brief: any): NewsBrief {
+    if (!brief) return brief as NewsBrief;
+    
+    return {
       id: brief.id,
       title: brief.title,
       summary: brief.summary,
-      sourceArticles: brief.source_articles,
+      sourceArticles: brief.source_articles || [],
       category: brief.category,
-      publishedAt: new Date(brief.published_at),
+      publishedAt: brief.published_at ? new Date(brief.published_at) : new Date(),
       tags: brief.tags || [],
       status: brief.status || 'pending',
       reviewedBy: brief.reviewed_by,
       reviewedAt: brief.reviewed_at ? new Date(brief.reviewed_at) : undefined,
       reviewNotes: brief.review_notes,
-      llmMetadata: brief.llm_metadata || undefined,
+      llmMetadata: brief.llm_metadata || {},
       createdAt: brief.created_at ? new Date(brief.created_at) : new Date(),
-      updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date()
+      updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date(),
+    };
+  }
+
+  // Calculate date range based on time range selection
+  private calculateDateRange(timeRange: number): Date | null {
+    if (timeRange === -1) return null; // Unlimited
+    
+    const now = new Date();
+    const cutoffDate = new Date(now.getTime() - (timeRange * 24 * 60 * 60 * 1000));
+    return cutoffDate;
+  }
+
+  // Get articles with time filtering
+  async getArticlesWithTimeFilter(timeRange: number = -1, limit: number = 100): Promise<NewsArticle[]> {
+    let query = supabase
+      .from(TABLES.NEWS_ARTICLES)
+      .select('*')
+      .order('published_at', { ascending: false })
+      .limit(limit);
+    
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching articles with time filter:', error);
+      throw new Error(`Failed to fetch articles with time filter: ${error.message}`);
+    }
+    
+    return (data || []).map(article => ({
+      id: article.id,
+      title: article.title,
+      description: article.description,
+      content: article.content,
+      url: article.url,
+      source: article.source,
+      category: article.category,
+      publishedAt: new Date(article.published_at),
+      processedAt: new Date(article.processed_at),
+      briefGenerated: article.brief_generated,
+      briefContent: article.brief_content,
+      tags: article.tags || []
     }));
   }
 

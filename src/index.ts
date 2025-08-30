@@ -26,11 +26,14 @@ app.use(express.urlencoded({ extended: true }));
 // CORS middleware
 app.use(cors({
   origin: [
-    'http://localhost:3000',  // Local development
+    'http://localhost:3000',  // Local development (admin-clean)
+    'http://localhost:3001',  // Local backend
     'https://neutral-newz-backend.onrender.com',  // Deployed backend
     'https://neutral-newz-admin.vercel.app'
   ],
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Request logging middleware

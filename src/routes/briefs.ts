@@ -7,12 +7,17 @@ const databaseService = new DatabaseService();
 // Get all news briefs
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const briefs = await databaseService.getBriefs();
+    const timeRange = parseInt(req.query.timeRange as string) || -1;
+    const limit = parseInt(req.query.limit as string) || 100;
+    
+    const briefs = await databaseService.getLatestBriefs(limit, timeRange);
     
     res.json({
       success: true,
       data: briefs,
-      count: briefs.length
+      count: briefs.length,
+      timeRange,
+      limit
     });
   } catch (error) {
     res.status(500).json({
@@ -55,13 +60,18 @@ router.get('/category/:category', async (req: Request, res: Response) => {
       });
     }
     
-    const briefs = await databaseService.getBriefsByCategory(category.toUpperCase());
+    const timeRange = parseInt(req.query.timeRange as string) || -1;
+    const limit = parseInt(req.query.limit as string) || 100;
+    
+    const briefs = await databaseService.getBriefsByCategory(category.toUpperCase(), limit, timeRange);
     
     res.json({
       success: true,
       data: briefs,
       count: briefs.length,
-      category: category.toUpperCase()
+      category: category.toUpperCase(),
+      timeRange,
+      limit
     });
   } catch (error) {
     res.status(500).json({

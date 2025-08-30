@@ -136,30 +136,46 @@ export class RSSService {
   }
 
   async fetchAllFeeds(): Promise<Map<string, RSSFeedResponse>> {
-    const feeds = await this.databaseService.getFeeds();
-    const results = new Map<string, RSSFeedResponse>();
-    
-    console.log(`📡 Fetching ${feeds.filter(f => f.active).length} active RSS feeds...`);
-    
-    const promises = feeds
-      .filter(feed => feed.active)
-      .map(async (feed) => {
-        const result = await this.fetchFeed(feed);
-        if (result) {
-          results.set(feed.id, result);
-        }
-        return { feedId: feed.id, success: !!result };
-      });
+    try {
+      const feeds = await this.databaseService.getFeeds();
+      const results = new Map<string, RSSFeedResponse>();
+      
+      console.log(`📡 Fetching ${feeds.filter(f => f.active).length} active RSS feeds...`);
+      
+      const promises = feeds
+        .filter(feed => feed.active)
+        .map(async (feed) => {
+          try {
+            const result = await this.fetchFeed(feed);
+            if (result) {
+              results.set(feed.id, result);
+            }
+            return { feedId: feed.id, success: !!result };
+          } catch (error) {
+            console.error(`❌ Error processing feed ${feed.id}:`, error);
+            return { feedId: feed.id, success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+          }
+        });
 
-    const results_array = await Promise.allSettled(promises);
-    
-    // Log results summary
-    const successful = results_array.filter(r => r.status === 'fulfilled' && r.value.success).length;
-    const failed = results_array.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
-    
-    console.log(`📊 RSS Fetch Results: ${successful} successful, ${failed} failed out of ${feeds.filter(f => f.active).length} active feeds`);
-    
-    return results;
+      const results_array = await Promise.allSettled(promises);
+      
+      // Log results summary
+      const successful = results_array.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      const failed = results_array.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.success)).length;
+      
+      console.log(`📊 RSS Fetch Results: ${successful} successful, ${failed} failed out of ${feeds.filter(f => f.active).length} active feeds`);
+      
+      // Even if some feeds fail, return the successful ones
+      if (results.size === 0) {
+        console.log('⚠️ No feeds were successfully fetched, but continuing with processing');
+      }
+      
+      return results;
+    } catch (error) {
+      console.error('❌ Critical error in fetchAllFeeds:', error);
+      // Return empty map instead of throwing
+      return new Map();
+    }
   }
 
   convertToNewsArticles(

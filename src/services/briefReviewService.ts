@@ -21,7 +21,8 @@ export class BriefReviewService {
       throw error;
     }
 
-    return data || [];
+    // Transform snake_case to camelCase for frontend compatibility
+    return (data || []).map(brief => this.transformBriefData(brief));
   }
 
   async getBriefsByStatus(status: string): Promise<NewsBrief[]> {
@@ -36,7 +37,8 @@ export class BriefReviewService {
       throw error;
     }
 
-    return data || [];
+    // Transform snake_case to camelCase for frontend compatibility
+    return (data || []).map(brief => this.transformBriefData(brief));
   }
 
   async approveBrief(briefId: string, reviewerId: string, notes?: string): Promise<NewsBrief> {
@@ -81,7 +83,7 @@ export class BriefReviewService {
       reviewNotes: notes,
     });
 
-    return updatedBrief;
+    return this.transformBriefData(updatedBrief);
   }
 
   async rejectBrief(briefId: string, reviewerId: string, notes: string): Promise<NewsBrief> {
@@ -126,7 +128,7 @@ export class BriefReviewService {
       reviewNotes: notes,
     });
 
-    return updatedBrief;
+    return this.transformBriefData(updatedBrief);
   }
 
   async publishBrief(briefId: string, reviewerId: string): Promise<NewsBrief> {
@@ -324,7 +326,7 @@ export class BriefReviewService {
       changesMade: { summary: revisedBrief.summary },
     });
 
-    return updatedBrief;
+    return this.transformBriefData(updatedBrief);
   }
 
   async getReviewLogs(briefId?: string): Promise<BriefReviewLog[]> {
@@ -410,6 +412,28 @@ export class BriefReviewService {
     });
 
     return stats;
+  }
+
+  // Transform database snake_case to TypeScript camelCase
+  private transformBriefData(brief: any): NewsBrief {
+    if (!brief) return brief as NewsBrief;
+    
+    return {
+      id: brief.id,
+      title: brief.title,
+      summary: brief.summary,
+      sourceArticles: brief.source_articles || [],
+      category: brief.category,
+      publishedAt: brief.published_at ? new Date(brief.published_at) : new Date(),
+      tags: brief.tags || [],
+      status: brief.status,
+      reviewedBy: brief.reviewed_by,
+      reviewedAt: brief.reviewed_at ? new Date(brief.reviewed_at) : undefined,
+      reviewNotes: brief.review_notes,
+      llmMetadata: brief.llm_metadata || {},
+      createdAt: brief.created_at ? new Date(brief.created_at) : new Date(),
+      updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date(),
+    };
   }
 }
 

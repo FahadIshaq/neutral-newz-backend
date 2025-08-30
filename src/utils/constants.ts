@@ -144,4 +144,15 @@ export const RSS_FEEDS: RSSFeed[] = [
 export const PROCESSING_INTERVAL = '*/30 * * * *'; // Every 30 minutes
 export const MAX_ARTICLES_PER_FEED = 50;
 export const MAX_BRIEF_LENGTH = 500;
+
+// Time range constants for article filtering
+export const TIME_RANGES = {
+  SEVEN_DAYS: 7,
+  THIRTY_DAYS: 30,
+  NINETY_DAYS: 90,
+  THREE_SIXTY_FIVE_DAYS: 365,
+  UNLIMITED: -1
+} as const;
+
+export type TimeRange = typeof TIME_RANGES[keyof typeof TIME_RANGES];
 export const MIN_ARTICLES_FOR_BRIEF = 3;

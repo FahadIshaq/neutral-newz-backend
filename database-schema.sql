@@ -111,20 +111,25 @@ CREATE TRIGGER update_news_briefs_updated_at BEFORE UPDATE ON news_briefs
 
 -- Insert initial RSS feeds data
 INSERT INTO rss_feeds (id, name, url, category, active) VALUES
+  -- US National News
   ('npr-national', 'NPR National', 'https://feeds.npr.org/1003/rss.xml', 'US_NATIONAL', true),
   ('npr-politics', 'NPR Politics', 'https://feeds.npr.org/1014/rss.xml', 'US_NATIONAL', true),
-  ('pbs-headlines', 'PBS Headlines', 'https://www.pbs.org/newshour/feeds/rss/headlines', 'US_NATIONAL', true),
-  ('pbs-politics', 'PBS Politics', 'https://www.pbs.org/newshour/feeds/rss/politics', 'US_NATIONAL', true),
-  ('white-house', 'White House', 'https://www.whitehouse.gov/feed/', 'US_NATIONAL', true),
-  ('doj', 'DOJ', 'https://www.justice.gov/feeds/opa/blog-entries/feed', 'US_NATIONAL', true),
+  ('pbs-headlines', 'PBS NewsHour Headlines', 'https://www.pbs.org/newshour/feeds/rss/headlines', 'US_NATIONAL', true),
+  ('pbs-politics', 'PBS NewsHour Politics', 'https://www.pbs.org/newshour/feeds/rss/politics', 'US_NATIONAL', true),
+  ('white-house', 'White House Press', 'https://www.whitehouse.gov/presidential-actions/feed/', 'US_NATIONAL', true),
+  ('doj', 'DOJ News', 'https://www.justice.gov/news/rss?type=press_release&m=1', 'US_NATIONAL', true),
   ('congress', 'Congress', 'https://www.congress.gov/rss', 'US_NATIONAL', true),
+  
+  -- International News
   ('bbc-world', 'BBC World', 'https://feeds.bbci.co.uk/news/world/rss.xml', 'INTERNATIONAL', true),
-  ('cnn-world', 'CNN World', 'https://rss.cnn.com/rss/edition_world.rss', 'INTERNATIONAL', true),
+  ('cnn-world', 'CNN World', 'http://rss.cnn.com/rss/cnn_topstories.rss', 'INTERNATIONAL', true),
   ('un-news', 'UN News', 'https://news.un.org/feed/subscribe/en/news/all/rss.xml', 'INTERNATIONAL', true),
   ('npr-world', 'NPR World', 'https://feeds.npr.org/1004/rss.xml', 'INTERNATIONAL', true),
-  ('federal-reserve', 'Federal Reserve', 'https://www.federalreserve.gov/feeds/press_all.xml', 'FINANCE_MACRO', true),
-  ('us-treasury', 'US Treasury', 'https://home.treasury.gov/rss/press-releases', 'FINANCE_MACRO', true),
+  
+  -- International Finance/Macro
+  ('federal-reserve', 'Federal Reserve Press', 'https://www.federalreserve.gov/feeds/press_all.xml', 'FINANCE_MACRO', true),
+  ('us-treasury', 'US Treasury Press', 'https://treasurydirect.gov/TA_WS/securities/announced/rss', 'FINANCE_MACRO', true),
   ('npr-economy', 'NPR Economy', 'https://feeds.npr.org/1017/rss.xml', 'FINANCE_MACRO', true),
-  ('pbs-economy', 'PBS Economy', 'https://www.pbs.org/newshour/feeds/rss/economy', 'FINANCE_MACRO', true),
-  ('imf-press', 'IMF Press', 'https://www.imf.org/external/cntpst/prfeed.aspx', 'FINANCE_MACRO', true)
+  ('pbs-economy', 'PBS NewsHour Economy', 'https://www.pbs.org/newshour/feeds/rss/economy', 'FINANCE_MACRO', true),
+  ('imf-press', 'IMF Press', 'https://www.imf.org/en/rss-list/feed?category=FANDD_ENG', 'FINANCE_MACRO', true)
 ON CONFLICT (id) DO NOTHING;
