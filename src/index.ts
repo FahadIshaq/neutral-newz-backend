@@ -29,7 +29,8 @@ app.use(cors({
     'http://localhost:3000',  // Local development (admin-clean)
     'http://localhost:3001',  // Local backend
     'https://neutral-newz-backend.onrender.com',  // Deployed backend
-    'https://neutral-newz-admin.vercel.app'
+    'https://neutral-newz-admin.vercel.app',
+    'https://neutral-newz-backend.onrender.com'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
