@@ -31,10 +31,7 @@ export interface NewsBrief {
   category: 'US_NATIONAL' | 'INTERNATIONAL' | 'FINANCE_MACRO';
   publishedAt: Date;
   tags: string[];
-  status: 'pending' | 'approved' | 'rejected' | 'published' | 'unpublished';
-  reviewedBy?: string; // UUID string
-  reviewedAt?: Date;
-  reviewNotes?: string;
+  status: 'published' | 'draft' | 'archived';
   llmMetadata?: {
     modelVersion: string;
     promptVersion: string;
@@ -48,15 +45,22 @@ export interface NewsBrief {
   updatedAt: Date;
 }
 
-export interface BriefReviewLog {
-  id: string; // UUID string
-  briefId: string; // UUID string
-  reviewerId: string; // UUID string
-  action: 'approve' | 'reject' | 'publish' | 'unpublish' | 'edit';
-  previousStatus: string;
-  newStatus: string;
-  reviewNotes?: string;
-  changesMade?: Record<string, any>;
+export interface BriefEditLog {
+  id: string;
+  briefId: string;
+  editorId: string;
+  action: 'edit' | 'revise_ai' | 'delete' | 'archive';
+  previousContent?: {
+    title: string;
+    summary: string;
+    tags: string[];
+  };
+  newContent?: {
+    title: string;
+    summary: string;
+    tags: string[];
+  };
+  editNotes?: string;
   timestamp: Date;
 }
 

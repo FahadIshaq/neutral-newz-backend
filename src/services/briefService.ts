@@ -70,7 +70,7 @@ export class BriefService {
       category,
       publishedAt: new Date(),
       tags,
-      status: 'pending',
+      status: 'published',
       createdAt: new Date(),
       updatedAt: new Date()
     };

@@ -135,6 +135,8 @@ export class DatabaseService {
     console.log(`💾 Successfully saved ${savedCount} out of ${uniqueArticles.length} articles`);
   }
 
+
+
   /**
    * Deduplicate articles by ID and URL to prevent constraint violations
    */
@@ -249,10 +251,7 @@ export class DatabaseService {
         category: brief.category,
         published_at: brief.publishedAt.toISOString(),
         tags: brief.tags,
-        status: brief.status || 'pending',
-        reviewed_by: brief.reviewedBy,
-        reviewed_at: brief.reviewedAt?.toISOString(),
-        review_notes: brief.reviewNotes,
+        status: brief.status || 'published',
         llm_metadata: brief.llmMetadata || {},
         created_at: brief.createdAt.toISOString(),
         updated_at: brief.updatedAt.toISOString()
@@ -288,10 +287,7 @@ export class DatabaseService {
       category: brief.category,
       publishedAt: new Date(brief.published_at),
       tags: brief.tags || [],
-      status: brief.status || 'pending',
-      reviewedBy: brief.reviewed_by,
-      reviewedAt: brief.reviewed_at ? new Date(brief.reviewed_at) : undefined,
-      reviewNotes: brief.review_notes,
+      status: brief.status || 'published',
       llmMetadata: brief.llm_metadata || undefined,
       createdAt: brief.created_at ? new Date(brief.created_at) : new Date(),
       updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date()
@@ -322,12 +318,58 @@ export class DatabaseService {
     return (data || []).map(brief => this.transformBriefData(brief));
   }
 
-  async getLatestBriefs(limit: number = 10, timeRange: number = -1): Promise<NewsBrief[]> {
+  async getBriefsByCategoryPaginated(category: string, limit: number = 50, timeRange: number = -1, offset: number = 0): Promise<NewsBrief[]> {
+    let query = supabase
+      .from(TABLES.NEWS_BRIEFS)
+      .select('*')
+      .eq('category', category)
+      .order('published_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching briefs by category paginated:', error);
+      throw new Error(`Failed to fetch briefs by category paginated: ${error.message}`);
+    }
+    
+    return (data || []).map(brief => this.transformBriefData(brief));
+  }
+
+  async getBriefsByCategoryCount(category: string, timeRange: number = -1): Promise<number> {
+    let query = supabase
+      .from(TABLES.NEWS_BRIEFS)
+      .select('*', { count: 'exact', head: true })
+      .eq('category', category);
+    
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { count, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching briefs by category count:', error);
+      throw new Error(`Failed to fetch briefs by category count: ${error.message}`);
+    }
+    
+    return count || 0;
+  }
+
+  async getLatestBriefs(limit: number = 10, timeRange: number = -1, offset: number = 0): Promise<NewsBrief[]> {
     let query = supabase
       .from(TABLES.NEWS_BRIEFS)
       .select('*')
       .order('published_at', { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
     
     // Apply time filtering if specified
     const cutoffDate = this.calculateDateRange(timeRange);
@@ -345,6 +387,27 @@ export class DatabaseService {
     return (data || []).map(brief => this.transformBriefData(brief));
   }
 
+  async getBriefsCount(timeRange: number = -1): Promise<number> {
+    let query = supabase
+      .from(TABLES.NEWS_BRIEFS)
+      .select('*', { count: 'exact', head: true });
+    
+    // Apply time filtering if specified
+    const cutoffDate = this.calculateDateRange(timeRange);
+    if (cutoffDate) {
+      query = query.gte('published_at', cutoffDate.toISOString());
+    }
+    
+    const { count, error } = await query;
+    
+    if (error) {
+      console.error('Error fetching briefs count:', error);
+      throw new Error(`Failed to fetch briefs count: ${error.message}`);
+    }
+    
+    return count || 0;
+  }
+
   // Transform database snake_case to TypeScript camelCase
   private transformBriefData(brief: any): NewsBrief {
     if (!brief) return brief as NewsBrief;
@@ -357,10 +420,7 @@ export class DatabaseService {
       category: brief.category,
       publishedAt: brief.published_at ? new Date(brief.published_at) : new Date(),
       tags: brief.tags || [],
-      status: brief.status || 'pending',
-      reviewedBy: brief.reviewed_by,
-      reviewedAt: brief.reviewed_at ? new Date(brief.reviewed_at) : undefined,
-      reviewNotes: brief.review_notes,
+      status: brief.status || 'published',
       llmMetadata: brief.llm_metadata || {},
       createdAt: brief.created_at ? new Date(brief.created_at) : new Date(),
       updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date(),
@@ -465,5 +525,219 @@ export class DatabaseService {
     console.log(`📊 Database Stats: ${stats.totalFeeds} feeds, ${stats.activeFeeds} active, ${stats.totalArticles} articles, ${stats.totalBriefs} briefs`);
     
     return stats;
+  }
+
+  /**
+   * Get articles within a specific date range
+   */
+  async getArticlesByDateRange(startDate: Date, endDate: Date): Promise<NewsArticle[]> {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.NEWS_ARTICLES)
+        .select('*')
+        .gte('published_at', startDate.toISOString())
+        .lte('published_at', endDate.toISOString())
+        .order('published_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching articles by date range:', error);
+        throw new Error(`Failed to fetch articles by date range: ${error.message}`);
+      }
+      
+      console.log(`📰 Retrieved ${data?.length || 0} articles from ${startDate.toISOString()} to ${endDate.toISOString()}`);
+      return data || [];
+    } catch (error) {
+      console.error('Exception fetching articles by date range:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Check if an article already exists in the database
+   */
+  async articleExists(url: string, title: string): Promise<boolean> {
+    try {
+      // Check by URL first (most reliable)
+      const { data: urlMatch, error: urlError } = await supabase
+        .from(TABLES.NEWS_ARTICLES)
+        .select('id')
+        .eq('url', url)
+        .maybeSingle();
+      
+      if (urlError) {
+        console.error('Error checking article existence by URL:', urlError);
+      } else if (urlMatch) {
+        return true; // Article exists with this URL
+      }
+      
+      // Check by title similarity if URL doesn't match
+      if (title) {
+        const { data: titleMatches, error: titleError } = await supabase
+          .from(TABLES.NEWS_ARTICLES)
+          .select('id, title')
+          .ilike('title', `%${title}%`)
+          .limit(5);
+        
+        if (titleError) {
+          console.error('Error checking article existence by title:', titleError);
+        } else if (titleMatches && titleMatches.length > 0) {
+          // Check if any title is very similar (80%+ similarity)
+          const similarity = this.calculateTitleSimilarity(title, titleMatches[0].title);
+          if (similarity > 0.8) {
+            return true; // Article with similar title exists
+          }
+        }
+      }
+      
+      return false; // Article doesn't exist
+    } catch (error) {
+      console.error('Exception checking article existence:', error);
+      return false; // Assume it doesn't exist if we can't check
+    }
+  }
+
+  /**
+   * Calculate title similarity using simple word overlap
+   */
+  private calculateTitleSimilarity(title1: string, title2: string): number {
+    const words1 = new Set(title1.toLowerCase().split(/\s+/));
+    const words2 = new Set(title2.toLowerCase().split(/\s+/));
+    
+    return words1.size > 0 && words2.size > 0 ? 
+      words1.size / words2.size : 0;
+  }
+
+  // Brief Management Methods
+  async updateBrief(id: string, updatedBrief: NewsBrief): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(TABLES.NEWS_BRIEFS)
+        .update({
+          title: updatedBrief.title,
+          summary: updatedBrief.summary,
+          tags: updatedBrief.tags,
+          status: updatedBrief.status,
+          updated_at: updatedBrief.updatedAt.toISOString()
+        })
+        .eq('id', id);
+      
+      if (error) {
+        console.error('Error updating brief:', error);
+        throw new Error(`Failed to update brief: ${error.message}`);
+      }
+      
+      console.log(`✅ Updated brief ${id}`);
+    } catch (error) {
+      console.error('Exception updating brief:', error);
+      throw error;
+    }
+  }
+
+  async deleteBrief(id: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from(TABLES.NEWS_BRIEFS)
+        .delete()
+        .eq('id', id);
+      
+      if (error) {
+        console.error('Error deleting brief:', error);
+        throw new Error(`Failed to delete brief: ${error.message}`);
+      }
+      
+      console.log(`🗑️ Deleted brief ${id}`);
+    } catch (error) {
+      console.error('Exception deleting brief:', error);
+      throw error;
+    }
+  }
+
+  async logBriefEdit(editLog: any): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('brief_edit_logs')
+        .insert({
+          brief_id: editLog.briefId,
+          action: editLog.action,
+          editor_id: editLog.editorId,
+          previous_content: editLog.previousContent,
+          new_content: editLog.newContent,
+          edit_notes: editLog.editNotes,
+          metadata: editLog.metadata || {}
+        });
+      
+      if (error) {
+        console.error('Error logging brief edit:', error);
+        throw new Error(`Failed to log brief edit: ${error.message}`);
+      }
+      
+      console.log('📝 Brief edit logged successfully:', {
+        briefId: editLog.briefId,
+        action: editLog.action,
+        editorId: editLog.editorId
+      });
+    } catch (error) {
+      console.error('Error logging brief edit:', error);
+      // Don't throw error for logging failures - just log them
+    }
+  }
+
+  async getBriefEditLogs(briefId: string): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('brief_edit_logs')
+        .select('*')
+        .eq('brief_id', briefId)
+        .order('timestamp', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching brief edit logs:', error);
+        throw new Error(`Failed to fetch brief edit logs: ${error.message}`);
+      }
+      
+      return (data || []).map(log => ({
+        id: log.id,
+        briefId: log.brief_id,
+        action: log.action,
+        editorId: log.editor_id,
+        previousContent: log.previous_content,
+        newContent: log.new_content,
+        editNotes: log.edit_notes,
+        timestamp: log.timestamp,
+        metadata: log.metadata || {}
+      }));
+    } catch (error) {
+      console.error('Exception fetching brief edit logs:', error);
+      return [];
+    }
+  }
+
+  async getAllBriefEditLogs(): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('brief_edit_logs')
+        .select('*')
+        .order('timestamp', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching all edit logs:', error);
+        throw new Error(`Failed to fetch all edit logs: ${error.message}`);
+      }
+      
+      return (data || []).map(log => ({
+        id: log.id,
+        briefId: log.brief_id,
+        action: log.action,
+        editorId: log.editor_id,
+        previousContent: log.previous_content,
+        newContent: log.new_content,
+        editNotes: log.edit_notes,
+        timestamp: log.timestamp,
+        metadata: log.metadata || {}
+      }));
+    } catch (error) {
+      console.error('Exception fetching all edit logs:', error);
+      return [];
+    }
   }
 }

@@ -163,7 +163,7 @@ export class ProcessingService {
                 category: article.category || 'US_NATIONAL',
                 publishedAt: new Date(),
                 tags: [],
-                status: 'pending',
+                status: 'published',
                 createdAt: new Date(),
                 updatedAt: new Date()
               };
@@ -190,7 +190,7 @@ export class ProcessingService {
                 category: article.category || 'US_NATIONAL',
                 publishedAt: new Date(),
                 tags: [],
-                status: 'pending',
+                status: 'published',
                 createdAt: new Date(),
                 updatedAt: new Date()
               };
@@ -430,7 +430,7 @@ export class ProcessingService {
                     category: article.category,
                     publishedAt: new Date(),
                     tags: article.tags || [],
-                    status: 'pending',
+                    status: 'published',
                     createdAt: new Date(),
                     updatedAt: new Date()
                   };

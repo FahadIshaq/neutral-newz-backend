@@ -5,10 +5,11 @@ import { testDatabaseConnection } from './lib/supabase';
 import { SimpleTableService } from './services/simpleTableService';
 import { DatabaseService } from './services/databaseService';
 import { ProcessingService } from './services/processingService';
+import { EnhancedProcessingService } from './services/enhancedProcessingService';
 import feedsRouter from './routes/feeds';
 import authRouter from './routes/auth';
 import briefsRouter from './routes/briefs';
-import briefReviewRouter from './routes/briefReview';
+
 import { authenticateToken, requireAdmin } from './middleware/auth';
 import { RSSService } from './services/rssService';
 import { BriefService } from './services/briefService';
@@ -119,6 +120,19 @@ app.get('/api/system/status', async (req, res) => {
     // Get circuit breaker status
     const circuitBreakerStatus = rssService.getCircuitBreakerStatus();
     
+    // Get enhanced processing status
+    const enhancedProcessingStatus = enhancedProcessingService?.getProcessingStatus() || {
+      isProcessing: false,
+      queueSize: 0,
+      lastProcessed: new Date(),
+      isChecking: false
+    };
+    const queueStats = enhancedProcessingService?.getQueueStats() || {
+      totalQueued: 0,
+      byCategory: {},
+      estimatedProcessingTime: 0
+    };
+    
     // Comprehensive system status
     const systemStatus = {
       success: true,
@@ -166,6 +180,16 @@ app.get('/api/system/status', async (req, res) => {
           schedule: 'Every 30 minutes',
           lastRun: processingStatus.lastRun || 'Not started yet'
         },
+        enhancedProcessing: {
+          status: 'active',
+          checkingInterval: 'Every 30 seconds',
+          processingInterval: 'Every 30 minutes',
+          queueSize: queueStats.totalQueued,
+          isProcessing: enhancedProcessingStatus.isProcessing,
+          lastProcessed: enhancedProcessingStatus.lastProcessed,
+          distribution: queueStats.byCategory,
+          estimatedProcessingTime: queueStats.estimatedProcessingTime
+        },
         errorLogging: {
           status: 'enabled',
           level: 'error',
@@ -188,7 +212,6 @@ app.get('/api/system/status', async (req, res) => {
 // Protected routes
 app.use('/api/feeds', authenticateToken, requireAdmin, feedsRouter);
 app.use('/api/briefs', authenticateToken, requireAdmin, briefsRouter);
-app.use('/api/brief-review', authenticateToken, requireAdmin, briefReviewRouter);
 
 // Circuit breaker management endpoint (admin only)
 app.post('/api/system/reset-circuit-breaker/:feedId', authenticateToken, requireAdmin, async (req, res) => {
@@ -202,7 +225,13 @@ app.post('/api/system/reset-circuit-breaker/:feedId', authenticateToken, require
       });
     }
     
-    const rssService = new RSSService();
+    if (!rssService) {
+      return res.status(500).json({
+        success: false,
+        error: 'RSS service not initialized'
+      });
+    }
+    
     rssService.resetCircuitBreaker(feedId);
     
     res.json({
@@ -215,6 +244,94 @@ app.post('/api/system/reset-circuit-breaker/:feedId', authenticateToken, require
     res.status(500).json({
       success: false,
       error: 'Failed to reset circuit breaker',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Enhanced processing control endpoints (admin only)
+app.get('/api/system/enhanced-processing/status', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!enhancedProcessingService) {
+      return res.status(500).json({
+        success: false,
+        error: 'Enhanced processing service not initialized'
+      });
+    }
+    
+    const status = enhancedProcessingService.getProcessingStatus();
+    const queueStats = enhancedProcessingService.getQueueStats();
+    
+    res.json({
+      success: true,
+      data: {
+        status,
+        queueStats,
+        dailyLimits: {
+          total: 150,
+          maxPerCategory: 50,
+          distribution: {
+            US_NATIONAL: '40% (60 max)',
+            INTERNATIONAL: '35% (52 max)',
+            FINANCE_MACRO: '25% (37 max)'
+          }
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get enhanced processing status',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.post('/api/system/enhanced-processing/process', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!enhancedProcessingService) {
+      return res.status(500).json({
+        success: false,
+        error: 'Enhanced processing service not initialized'
+      });
+    }
+    
+    const result = await enhancedProcessingService.manualProcess();
+    
+    res.json({
+      success: true,
+      message: 'Manual processing triggered',
+      data: result
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to trigger manual processing',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.post('/api/system/enhanced-processing/clear-queue', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!enhancedProcessingService) {
+      return res.status(500).json({
+        success: false,
+        error: 'Enhanced processing service not initialized'
+      });
+    }
+    
+    enhancedProcessingService.clearQueue();
+    
+    res.json({
+      success: true,
+      message: 'Processing queue cleared',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear processing queue',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
@@ -242,6 +359,9 @@ app.get('/', (req, res) => {
         'GET /api/briefs/category/:category',
         'GET /api/briefs/:id',
         'GET /api/system/status',
+        'GET /api/system/enhanced-processing/status',
+        'POST /api/system/enhanced-processing/process',
+        'POST /api/system/enhanced-processing/clear-queue',
         'POST /api/auth/register',
         'GET /api/auth/me',
         'POST /api/auth/change-password'
@@ -294,6 +414,13 @@ app.use((error: Error, req: express.Request, res: express.Response, next: expres
   }
 });
 
+// Global service instances
+let enhancedProcessingService: EnhancedProcessingService | null = null;
+let rssService: RSSService | null = null;
+let briefService: BriefService | null = null;
+let aiService: AIService | null = null;
+let databaseService: DatabaseService | null = null;
+
 // Initialize database and start server
 async function startServer() {
   try {
@@ -324,7 +451,7 @@ async function startServer() {
     }
     
     // Get initial database stats
-    const databaseService = new DatabaseService();
+    databaseService = new DatabaseService();
     try {
       const stats = await databaseService.getDatabaseStats();
       console.log(`📊 Initial Database Stats: ${stats.totalFeeds} feeds, ${stats.activeFeeds} active, ${stats.totalArticles} articles, ${stats.totalBriefs} briefs`);
@@ -332,13 +459,19 @@ async function startServer() {
       console.log('⚠️ Could not get initial database stats, but continuing...');
     }
     
-    // Initialize and start RSS processing service
-    const rssService = new RSSService();
-    const briefService = new BriefService();
-    const aiService = new AIService();
+    // Initialize and start enhanced RSS processing service
+    rssService = new RSSService();
+    briefService = new BriefService();
+    aiService = new AIService();
+    
+    // Use enhanced processing service for better deduplication and distribution
+    enhancedProcessingService = new EnhancedProcessingService(rssService, databaseService, briefService, aiService);
+    enhancedProcessingService.startEnhancedProcessing();
+    console.log('🚀 Enhanced RSS processing started: 30-second checking, 30-minute batching');
+    
+    // Keep legacy service for backward compatibility
     const processingService = new ProcessingService(rssService, databaseService, briefService, aiService);
-    processingService.startScheduledProcessing();
-    console.log('⏰ RSS processing scheduled every 30 minutes');
+    // Don't start legacy service - enhanced service handles everything
     
     // Start server
     app.listen(PORT, () => {

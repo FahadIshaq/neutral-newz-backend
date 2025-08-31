@@ -139,13 +139,13 @@ export class AIService {
       // Convert to NewsBrief format
       const brief: NewsBrief = {
         id: this.generateBriefId(articles[0].category, processedArticle.headline),
-        title: processedArticle.headline,
+        title: processedArticle.headline || articles[0].title || 'News Update', // FIX: Ensure title is never empty
         summary: processedArticle.brief,
         sourceArticles: articles.map(a => a.id),
         category: articles[0].category,
         publishedAt: new Date(),
         tags: this.extractTags(articles),
-        status: 'pending',
+        status: 'published',
         createdAt: new Date(),
         updatedAt: new Date(),
         llmMetadata: {
@@ -158,6 +158,11 @@ export class AIService {
           revisionCount: 0
         }
       };
+      
+      // FIX: Log the headline to debug the issue
+      console.log(`🔍 AI: Generated brief with title: "${brief.title}"`);
+      console.log(`🔍 AI: Original article title: "${articles[0].title}"`);
+      console.log(`🔍 AI: Processed headline: "${processedArticle.headline}"`);
 
       // Calculate costs (GPT-4o-mini pricing: $0.15 per 1M input tokens, $0.60 per 1M output tokens)
       const inputTokens = 1200; // Approximate for the enhanced prompt
@@ -405,8 +410,13 @@ Return output strictly in the required markup sections.
     let sidecar = {};
     try { sidecar = JSON.parse(sidecarRaw || "{}"); } catch {}
 
+    // FIX: Ensure headline is never empty - use title as fallback
+    const finalHeadline = headline || "News Update";
+    
+    console.log(`🔍 AI: Parsed headline: "${finalHeadline}"`);
+
     return {
-      headline,
+      headline: finalHeadline,
       brief,
       contextLine: contextLine?.toLowerCase() === "none" ? null : contextLine,
       sources,

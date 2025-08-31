@@ -141,7 +141,26 @@ export const RSS_FEEDS: RSSFeed[] = [
   }
 ];
 
-export const PROCESSING_INTERVAL = '*/30 * * * *'; // Every 30 minutes
+// NEW PROCESSING STRATEGY: 30-second checking with intelligent batching
+export const PROCESSING_INTERVAL = '*/30 * * * * *'; // Every 30 seconds
+export const PROCESSING_BATCH_INTERVAL = '*/30 * * * *'; // Every 30 minutes (for actual processing)
+export const HOLDING_QUEUE_DURATION = 25 * 60 * 1000; // 25 minutes in milliseconds
+
+// ARTICLE DISTRIBUTION LIMITS
+export const DAILY_ARTICLE_LIMIT = 150; // Total articles per day across all categories
+export const MAX_ARTICLES_PER_CATEGORY = 50; // Maximum articles per category per day
+export const CATEGORY_DISTRIBUTION = {
+  US_NATIONAL: 0.4,      // 40% - 60 articles max
+  INTERNATIONAL: 0.35,    // 35% - 52 articles max  
+  FINANCE_MACRO: 0.25     // 25% - 37 articles max
+};
+
+// DEDUPLICATION SETTINGS
+export const DEDUP_SIMILARITY_THRESHOLD = 0.85; // 85% similarity for deduplication
+export const DEDUP_TITLE_SIMILARITY = 0.8; // 80% title similarity for deduplication
+export const DEDUP_CONTENT_SIMILARITY = 0.75; // 75% content similarity for deduplication
+
+// EXISTING CONSTANTS
 export const MAX_ARTICLES_PER_FEED = 50;
 export const MAX_BRIEF_LENGTH = 500;
 
