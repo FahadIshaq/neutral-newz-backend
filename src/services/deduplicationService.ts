@@ -57,7 +57,7 @@ export class DeduplicationService {
       distributionStats: {
         total: distributedArticles.length,
         byCategory: this.countByCategory(distributedArticles),
-        remainingCapacity: this.calculateRemainingCapacity(distributedArticles, existingArticles)
+        remainingCapacity: this.calculateRemainingCapacity(existingArticles)
       }
     };
     
@@ -121,6 +121,7 @@ export class DeduplicationService {
 
   /**
    * Distribute articles fairly across categories while respecting daily limits
+   * Enforces exactly 50 articles per category (150 total)
    */
   private async distributeArticlesFairly(
     articles: NewsArticle[], 
@@ -137,24 +138,21 @@ export class DeduplicationService {
     const existingByCategory = this.countByCategory(existingToday);
     console.log(`📅 Existing articles today: ${JSON.stringify(existingByCategory)}`);
     
-    // Calculate remaining capacity for each category
-    const remainingCapacity = this.calculateRemainingCapacity(articles, existingArticles);
+    // Calculate remaining capacity for each category (exactly 50 per category)
+    const remainingCapacity = this.calculateRemainingCapacity(existingArticles);
     console.log(`📊 Remaining capacity: ${JSON.stringify(remainingCapacity)}`);
     
     // Group articles by category
     const articlesByCategory = this.groupByCategory(articles);
     
-    // Distribute articles fairly
+    // Distribute articles fairly with strict 50 per category limit
     const distributed: NewsArticle[] = [];
     
     for (const [category, categoryArticles] of Object.entries(articlesByCategory)) {
-      const maxAllowed = Math.min(
-        MAX_ARTICLES_PER_CATEGORY,
-        remainingCapacity[category] || 0
-      );
+      const maxAllowed = remainingCapacity[category] || 0;
       
       if (maxAllowed <= 0) {
-        console.log(`⚠️ Category ${category} at capacity, skipping ${categoryArticles.length} articles`);
+        console.log(`⚠️ Category ${category} at capacity (50/50), skipping ${categoryArticles.length} articles`);
         continue;
       }
       
@@ -163,14 +161,13 @@ export class DeduplicationService {
       const selectedArticles = sortedArticles.slice(0, maxAllowed);
       
       distributed.push(...selectedArticles);
-      console.log(`✅ Category ${category}: selected ${selectedArticles.length}/${categoryArticles.length} articles`);
+      console.log(`✅ Category ${category}: selected ${selectedArticles.length}/${categoryArticles.length} articles (${existingByCategory[category] || 0 + selectedArticles.length}/50 total)`);
     }
     
-    // Ensure total doesn't exceed daily limit
-    if (distributed.length > DAILY_ARTICLE_LIMIT) {
-      console.log(`⚠️ Total articles (${distributed.length}) exceed daily limit (${DAILY_ARTICLE_LIMIT}), truncating`);
-      distributed.splice(DAILY_ARTICLE_LIMIT);
-    }
+    // Log final distribution
+    const finalDistribution = this.countByCategory(distributed);
+    const totalSelected = distributed.length;
+    console.log(`🎯 Final distribution: ${JSON.stringify(finalDistribution)} (${totalSelected} total articles)`);
     
     return distributed;
   }
@@ -331,9 +328,9 @@ export class DeduplicationService {
 
   /**
    * Calculate remaining capacity for each category
+   * Enforces exactly 50 articles per category
    */
   private calculateRemainingCapacity(
-    newArticles: NewsArticle[], 
     existingArticles: NewsArticle[]
   ): Record<string, number> {
     const today = new Date();
@@ -346,10 +343,10 @@ export class DeduplicationService {
     const existingByCategory = this.countByCategory(existingToday);
     
     const capacity: Record<string, number> = {};
-    for (const [category, ratio] of Object.entries(CATEGORY_DISTRIBUTION)) {
-      const maxAllowed = Math.floor(DAILY_ARTICLE_LIMIT * ratio);
+    for (const category of Object.keys(CATEGORY_DISTRIBUTION)) {
       const existing = existingByCategory[category] || 0;
-      capacity[category] = Math.max(0, maxAllowed - existing);
+      // Each category gets exactly 50 articles
+      capacity[category] = Math.max(0, MAX_ARTICLES_PER_CATEGORY - existing);
     }
     
     return capacity;

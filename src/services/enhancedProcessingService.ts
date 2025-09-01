@@ -147,6 +147,25 @@ export class EnhancedProcessingService {
       today.setHours(0, 0, 0, 0);
       const existingArticles = await this.databaseService.getArticlesByDateRange(today, new Date());
       
+      // Check if daily limit has been reached (150 total articles)
+      const totalExisting = existingArticles.length;
+      if (totalExisting >= DAILY_ARTICLE_LIMIT) {
+        console.log(`⚠️ Daily limit reached: ${totalExisting}/${DAILY_ARTICLE_LIMIT} articles already processed today`);
+        console.log(`📊 Skipping processing of ${this.processingQueue.articles.length} queued articles`);
+        this.processingQueue.articles = [];
+        return;
+      }
+      
+      // Check category limits
+      const existingByCategory = this.countArticlesByCategory(existingArticles);
+      const categoriesAtLimit = Object.entries(existingByCategory)
+        .filter(([_, count]) => (count as number) >= MAX_ARTICLES_PER_CATEGORY)
+        .map(([category, _]) => category);
+      
+      if (categoriesAtLimit.length > 0) {
+        console.log(`⚠️ Categories at limit (50/50): ${categoriesAtLimit.join(', ')}`);
+      }
+      
       // Deduplicate and distribute articles
       const dedupResult = await this.deduplicationService.deduplicateAndDistribute(
         this.processingQueue.articles,
@@ -364,6 +383,17 @@ export class EnhancedProcessingService {
     console.log('🧹 Clearing processing queue');
     this.processingQueue.articles = [];
     this.processingQueue.lastProcessed = new Date();
+  }
+
+  /**
+   * Count articles by category
+   */
+  private countArticlesByCategory(articles: NewsArticle[]): Record<string, number> {
+    return articles.reduce((acc, article) => {
+      const category = article.category || 'US_NATIONAL';
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
   }
 
   /**

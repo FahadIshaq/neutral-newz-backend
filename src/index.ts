@@ -271,9 +271,9 @@ app.get('/api/system/enhanced-processing/status', authenticateToken, requireAdmi
           total: 150,
           maxPerCategory: 50,
           distribution: {
-            US_NATIONAL: '40% (60 max)',
-            INTERNATIONAL: '35% (52 max)',
-            FINANCE_MACRO: '25% (37 max)'
+            US_NATIONAL: '33.3% (50 max)',
+            INTERNATIONAL: '33.3% (50 max)',
+            FINANCE_MACRO: '33.4% (50 max)'
           }
         }
       }
@@ -337,6 +337,86 @@ app.post('/api/system/enhanced-processing/clear-queue', authenticateToken, requi
   }
 });
 
+// Daily limits status endpoint (public)
+app.get('/api/system/daily-limits', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    
+    // Get articles for today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayArticles = await databaseService.getArticlesByDateRange(today, new Date());
+    
+    // Count by category
+    const articlesByCategory = todayArticles.reduce((acc, article) => {
+      const category = article.category || 'US_NATIONAL';
+      acc[category] = (acc[category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    // Calculate remaining capacity
+    const remainingCapacity = {
+      US_NATIONAL: Math.max(0, 50 - (articlesByCategory.US_NATIONAL || 0)),
+      INTERNATIONAL: Math.max(0, 50 - (articlesByCategory.INTERNATIONAL || 0)),
+      FINANCE_MACRO: Math.max(0, 50 - (articlesByCategory.FINANCE_MACRO || 0))
+    };
+    
+    const totalArticles = todayArticles.length;
+    const totalRemaining = Object.values(remainingCapacity).reduce((sum, count) => sum + count, 0);
+    
+    const dailyLimitsStatus = {
+      success: true,
+      data: {
+        date: today.toISOString().split('T')[0],
+        limits: {
+          total: {
+            limit: 150,
+            current: totalArticles,
+            remaining: totalRemaining,
+            percentage: Math.round((totalArticles / 150) * 100)
+          },
+          byCategory: {
+            US_NATIONAL: {
+              limit: 50,
+              current: articlesByCategory.US_NATIONAL || 0,
+              remaining: remainingCapacity.US_NATIONAL,
+              percentage: Math.round(((articlesByCategory.US_NATIONAL || 0) / 50) * 100)
+            },
+            INTERNATIONAL: {
+              limit: 50,
+              current: articlesByCategory.INTERNATIONAL || 0,
+              remaining: remainingCapacity.INTERNATIONAL,
+              percentage: Math.round(((articlesByCategory.INTERNATIONAL || 0) /50) * 100)
+            },
+            FINANCE_MACRO: {
+              limit: 50,
+              current: articlesByCategory.FINANCE_MACRO || 0,
+              remaining: remainingCapacity.FINANCE_MACRO,
+              percentage: Math.round(((articlesByCategory.FINANCE_MACRO || 0) / 50) * 100)
+            }
+          }
+        },
+        status: {
+          atLimit: totalArticles >= 150,
+          categoriesAtLimit: Object.entries(remainingCapacity)
+            .filter(([_, remaining]) => remaining === 0)
+            .map(([category, _]) => category),
+          canProcess: totalRemaining > 0
+        }
+      }
+    };
+    
+    res.json(dailyLimitsStatus);
+  } catch (error) {
+    console.error('❌ Error getting daily limits status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get daily limits status',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -359,6 +439,7 @@ app.get('/', (req, res) => {
         'GET /api/briefs/category/:category',
         'GET /api/briefs/:id',
         'GET /api/system/status',
+        'GET /api/system/daily-limits',
         'GET /api/system/enhanced-processing/status',
         'POST /api/system/enhanced-processing/process',
         'POST /api/system/enhanced-processing/clear-queue',

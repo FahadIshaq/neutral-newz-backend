@@ -148,11 +148,11 @@ export const HOLDING_QUEUE_DURATION = 25 * 60 * 1000; // 25 minutes in milliseco
 
 // ARTICLE DISTRIBUTION LIMITS
 export const DAILY_ARTICLE_LIMIT = 150; // Total articles per day across all categories
-export const MAX_ARTICLES_PER_CATEGORY = 50; // Maximum articles per category per day
+export const MAX_ARTICLES_PER_CATEGORY = 50; // Maximum articles per category per day (exactly 50 each)
 export const CATEGORY_DISTRIBUTION = {
-  US_NATIONAL: 0.4,      // 40% - 60 articles max
-  INTERNATIONAL: 0.35,    // 35% - 52 articles max  
-  FINANCE_MACRO: 0.25     // 25% - 37 articles max
+  US_NATIONAL: 0.333,      // 33.3% - exactly 50 articles
+  INTERNATIONAL: 0.333,    // 33.3% - exactly 50 articles  
+  FINANCE_MACRO: 0.334     // 33.4% - exactly 50 articles (slight adjustment for rounding)
 };
 
 // DEDUPLICATION SETTINGS
