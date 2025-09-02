@@ -29,6 +29,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000',  // Local development (admin-clean)
     'http://localhost:3001',  // Local backend
+    'http://localhost:3002',  // Local news-digest frontend
     'https://neutral-newz-backend.onrender.com',  // Deployed backend
     'https://neutral-newz-admin.vercel.app',
     'https://neutral-newz-backend.onrender.com'
@@ -417,6 +418,224 @@ app.get('/api/system/daily-limits', async (req, res) => {
   }
 });
 
+// Public endpoints for news-digest frontend (no authentication required)
+app.get('/api/public/briefs', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    const { page = 1, limit = 10, category, timeRange } = req.query;
+    
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = parseInt(limit as string) || 10;
+    const offset = (pageNum - 1) * limitNum;
+    
+    // Get published briefs only
+    let briefs = await databaseService.getBriefsByStatus('published');
+    
+    // Filter by category if specified
+    if (category) {
+      briefs = briefs.filter(brief => brief.category === category);
+    }
+    
+    // Filter by time range if specified
+    if (timeRange) {
+      const timeRangeNum = parseInt(timeRange as string);
+      const cutoffDate = new Date(Date.now() - timeRangeNum * 60 * 60 * 1000);
+      briefs = briefs.filter(brief => new Date(brief.publishedAt) >= cutoffDate);
+    }
+    
+    // Sort by published date (newest first)
+    briefs.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    
+    const total = briefs.length;
+    const paginatedBriefs = briefs.slice(offset, offset + limitNum);
+    
+    // Transform briefs with resolved source URLs for public endpoints
+    const transformedBriefs = await Promise.all(
+      paginatedBriefs.map(brief => databaseService.transformBriefDataWithResolvedSources(brief))
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        briefs: transformedBriefs,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNext: offset + limitNum < total,
+        hasPrev: pageNum > 1
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting public briefs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get briefs',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/public/briefs/category/:category', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    const { category } = req.params;
+    const { page = 1, limit = 10, timeRange } = req.query;
+    
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = parseInt(limit as string) || 10;
+    const offset = (pageNum - 1) * limitNum;
+    
+    // Get published briefs for specific category
+    let briefs = await databaseService.getBriefsByStatus('published');
+    briefs = briefs.filter(brief => brief.category === category);
+    
+    // Filter by time range if specified
+    if (timeRange) {
+      const timeRangeNum = parseInt(timeRange as string);
+      const cutoffDate = new Date(Date.now() - timeRangeNum * 60 * 60 * 1000);
+      briefs = briefs.filter(brief => new Date(brief.publishedAt) >= cutoffDate);
+    }
+    
+    // Sort by published date (newest first)
+    briefs.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    
+    const total = briefs.length;
+    const paginatedBriefs = briefs.slice(offset, offset + limitNum);
+    
+    // Transform briefs with resolved source URLs for public endpoints
+    const transformedBriefs = await Promise.all(
+      paginatedBriefs.map(brief => databaseService.transformBriefDataWithResolvedSources(brief))
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        briefs: transformedBriefs,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasNext: offset + limitNum < total,
+        hasPrev: pageNum > 1
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error getting public briefs by category:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get briefs by category',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/public/briefs/stats', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    
+    // Get all briefs
+    const allBriefs = await databaseService.getAllBriefs();
+    
+    // Count by status
+    const stats = {
+      totalPublished: allBriefs.filter(brief => brief.status === 'published').length,
+      totalDraft: allBriefs.filter(brief => brief.status === 'draft').length,
+      totalArchived: allBriefs.filter(brief => brief.status === 'archived').length,
+      byCategory: {
+        US_NATIONAL: allBriefs.filter(brief => brief.category === 'US_NATIONAL' && brief.status === 'published').length,
+        INTERNATIONAL: allBriefs.filter(brief => brief.category === 'INTERNATIONAL' && brief.status === 'published').length,
+        FINANCE_MACRO: allBriefs.filter(brief => brief.category === 'FINANCE_MACRO' && brief.status === 'published').length
+      }
+    };
+    
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('❌ Error getting public brief stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get brief stats',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/public/briefs/latest/:limit', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    const { limit } = req.params;
+    const limitNum = parseInt(limit) || 10;
+    
+    // Get published briefs
+    let briefs = await databaseService.getBriefsByStatus('published');
+    
+    // Sort by published date (newest first)
+    briefs.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    
+    // Take the latest N briefs
+    const latestBriefs = briefs.slice(0, limitNum);
+    
+    // Transform briefs with resolved source URLs for public endpoints
+    const transformedBriefs = await Promise.all(
+      latestBriefs.map(brief => databaseService.transformBriefDataWithResolvedSources(brief))
+    );
+    
+    res.json({
+      success: true,
+      data: transformedBriefs
+    });
+  } catch (error) {
+    console.error('❌ Error getting latest public briefs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get latest briefs',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/public/briefs/:id', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    const { id } = req.params;
+    
+    const brief = await databaseService.getBriefById(id);
+    
+    if (!brief) {
+      return res.status(404).json({
+        success: false,
+        error: 'Brief not found'
+      });
+    }
+    
+    // Only return published briefs
+    if (brief.status !== 'published') {
+      return res.status(404).json({
+        success: false,
+        error: 'Brief not found'
+      });
+    }
+    
+    // Transform brief with resolved source URLs for public endpoints
+    const transformedBrief = await databaseService.transformBriefDataWithResolvedSources(brief);
+    
+    res.json({
+      success: true,
+      data: transformedBrief
+    });
+  } catch (error) {
+    console.error('❌ Error getting public brief by ID:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get brief',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
@@ -426,7 +645,12 @@ app.get('/', (req, res) => {
       public: [
         'GET /health',
         'POST /api/auth/login',
-        'POST /api/auth/logout'
+        'POST /api/auth/logout',
+        'GET /api/public/briefs',
+        'GET /api/public/briefs/stats',
+        'GET /api/public/briefs/category/:category',
+        'GET /api/public/briefs/latest/:limit',
+        'GET /api/public/briefs/:id'
       ],
       protected: [
         'GET /api/feeds',

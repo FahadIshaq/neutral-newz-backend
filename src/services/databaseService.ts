@@ -387,6 +387,50 @@ export class DatabaseService {
     return (data || []).map(brief => this.transformBriefData(brief));
   }
 
+  async getBriefsByStatus(status: string): Promise<NewsBrief[]> {
+    const { data, error } = await supabase
+      .from(TABLES.NEWS_BRIEFS)
+      .select('*')
+      .eq('status', status)
+      .order('published_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching briefs by status:', error);
+      throw new Error(`Failed to fetch briefs by status: ${error.message}`);
+    }
+    
+    return (data || []).map(brief => this.transformBriefData(brief));
+  }
+
+  async getAllBriefs(): Promise<NewsBrief[]> {
+    const { data, error } = await supabase
+      .from(TABLES.NEWS_BRIEFS)
+      .select('*')
+      .order('published_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching all briefs:', error);
+      throw new Error(`Failed to fetch all briefs: ${error.message}`);
+    }
+    
+    return (data || []).map(brief => this.transformBriefData(brief));
+  }
+
+  async getBriefById(id: string): Promise<NewsBrief | null> {
+    const { data, error } = await supabase
+      .from(TABLES.NEWS_BRIEFS)
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    
+    if (error) {
+      console.error('Error fetching brief by ID:', error);
+      throw new Error(`Failed to fetch brief by ID: ${error.message}`);
+    }
+    
+    return data ? this.transformBriefData(data) : null;
+  }
+
   async getBriefsCount(timeRange: number = -1): Promise<number> {
     let query = supabase
       .from(TABLES.NEWS_BRIEFS)
@@ -412,6 +456,27 @@ export class DatabaseService {
   private transformBriefData(brief: any): NewsBrief {
     if (!brief) return brief as NewsBrief;
     
+    return {
+      id: brief.id,
+      title: brief.title,
+      summary: brief.summary,
+      sourceArticles: brief.source_articles || [],
+      category: brief.category,
+      publishedAt: brief.published_at ? new Date(brief.published_at) : new Date(),
+      tags: brief.tags || [],
+      status: brief.status || 'published',
+      llmMetadata: brief.llm_metadata || {},
+      createdAt: brief.created_at ? new Date(brief.created_at) : new Date(),
+      updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date(),
+    };
+  }
+
+  // Transform database snake_case to TypeScript camelCase with resolved source URLs
+  public async transformBriefDataWithResolvedSources(brief: any): Promise<NewsBrief> {
+    if (!brief) return brief as NewsBrief;
+    
+    // For now, just return the original source articles
+    // The frontend will handle parsing them into readable source names
     return {
       id: brief.id,
       title: brief.title,
