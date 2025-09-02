@@ -32,7 +32,8 @@ app.use(cors({
     'http://localhost:3002',  // Local news-digest frontend
     'https://neutral-newz-backend.onrender.com',  // Deployed backend
     'https://neutral-newz-admin.vercel.app',
-    'https://neutral-newz-backend.onrender.com'
+    'https://neutral-newz-backend.onrender.com',
+    'https://neutral-newz.vercel.app/'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
