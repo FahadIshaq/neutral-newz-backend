@@ -33,7 +33,7 @@ app.use(cors({
     'https://neutral-newz-backend.onrender.com',  // Deployed backend
     'https://neutral-newz-admin.vercel.app',
     'https://neutral-newz-backend.onrender.com',
-    'https://neutral-newz.vercel.app/'
+    'https://neutral-newz.vercel.app'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
