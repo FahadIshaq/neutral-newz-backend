@@ -431,6 +431,87 @@ export class DatabaseService {
     return data ? this.transformBriefData(data) : null;
   }
 
+  // Fix existing briefs by populating sourceArticles with actual article URLs
+  async fixBriefSourceArticles(): Promise<{ fixed: number; errors: string[] }> {
+    console.log('🔧 Starting to fix brief source articles...');
+    
+    // Get all briefs with empty or missing sourceArticles
+    const { data: briefs, error: briefsError } = await supabase
+      .from(TABLES.NEWS_BRIEFS)
+      .select('*')
+      .or('source_articles.is.null,source_articles.eq.{}')
+      .limit(100); // Limit to avoid timeout
+    
+    if (briefsError) {
+      console.error('Error fetching briefs:', briefsError);
+      return { fixed: 0, errors: [`Failed to fetch briefs: ${briefsError.message}`] };
+    }
+    
+    if (!briefs || briefs.length === 0) {
+      console.log('✅ No briefs need fixing - all have source articles');
+      return { fixed: 0, errors: [] };
+    }
+    
+    console.log(`🔍 Found ${briefs.length} briefs with missing source articles`);
+    
+    let fixedCount = 0;
+    const errors: string[] = [];
+    
+    for (const brief of briefs) {
+      try {
+        // Find articles that match this brief's category and were published around the same time
+        const briefDate = new Date(brief.published_at);
+        const startDate = new Date(briefDate.getTime() - 24 * 60 * 60 * 1000); // 24 hours before
+        const endDate = new Date(briefDate.getTime() + 24 * 60 * 60 * 1000);   // 24 hours after
+        
+        const { data: articles, error: articlesError } = await supabase
+          .from(TABLES.NEWS_ARTICLES)
+          .select('url, title, published_at')
+          .eq('category', brief.category)
+          .gte('published_at', startDate.toISOString())
+          .lte('published_at', endDate.toISOString())
+          .order('published_at', { ascending: false })
+          .limit(3); // Get up to 3 most relevant articles
+        
+        if (articlesError) {
+          console.error(`Error fetching articles for brief ${brief.id}:`, articlesError);
+          errors.push(`Failed to fetch articles for brief ${brief.id}: ${articlesError.message}`);
+          continue;
+        }
+        
+        if (articles && articles.length > 0) {
+          // Update the brief with the actual article URLs
+          const articleUrls = articles.map(article => article.url);
+          
+          const { error: updateError } = await supabase
+            .from(TABLES.NEWS_BRIEFS)
+            .update({
+              source_articles: articleUrls,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', brief.id);
+          
+          if (updateError) {
+            console.error(`Error updating brief ${brief.id}:`, updateError);
+            errors.push(`Failed to update brief ${brief.id}: ${updateError.message}`);
+          } else {
+            console.log(`✅ Fixed brief ${brief.id} with ${articleUrls.length} source URLs`);
+            fixedCount++;
+          }
+        } else {
+          console.log(`⚠️ No matching articles found for brief ${brief.id}`);
+          errors.push(`No matching articles found for brief ${brief.id}`);
+        }
+      } catch (error) {
+        console.error(`Error processing brief ${brief.id}:`, error);
+        errors.push(`Error processing brief ${brief.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+    
+    console.log(`🎉 Fixed ${fixedCount} out of ${briefs.length} briefs`);
+    return { fixed: fixedCount, errors };
+  }
+
   async getBriefsCount(timeRange: number = -1): Promise<number> {
     let query = supabase
       .from(TABLES.NEWS_BRIEFS)
@@ -481,14 +562,14 @@ export class DatabaseService {
       id: brief.id,
       title: brief.title,
       summary: brief.summary,
-      sourceArticles: brief.source_articles || [],
+      sourceArticles: brief.sourceArticles || brief.source_articles || [],
       category: brief.category,
-      publishedAt: brief.published_at ? new Date(brief.published_at) : new Date(),
+      publishedAt: brief.publishedAt ? new Date(brief.publishedAt) : (brief.published_at ? new Date(brief.published_at) : new Date()),
       tags: brief.tags || [],
       status: brief.status || 'published',
-      llmMetadata: brief.llm_metadata || {},
-      createdAt: brief.created_at ? new Date(brief.created_at) : new Date(),
-      updatedAt: brief.updated_at ? new Date(brief.updated_at) : new Date(),
+      llmMetadata: brief.llmMetadata || brief.llm_metadata || {},
+      createdAt: brief.createdAt ? new Date(brief.createdAt) : (brief.created_at ? new Date(brief.created_at) : new Date()),
+      updatedAt: brief.updatedAt ? new Date(brief.updatedAt) : (brief.updated_at ? new Date(brief.updated_at) : new Date()),
     };
   }
 

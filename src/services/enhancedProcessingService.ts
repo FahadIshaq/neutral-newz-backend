@@ -296,7 +296,7 @@ export class EnhancedProcessingService {
       id: `fallback-${article.id}`,
       title: article.title || 'News Update',
       summary: article.description || article.content?.substring(0, 400) || 'Content unavailable',
-      sourceArticles: [article.source],
+      sourceArticles: [article.url],
       category: article.category || 'US_NATIONAL',
       publishedAt: new Date(),
       tags: article.tags || [],

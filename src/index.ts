@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { testDatabaseConnection } from './lib/supabase';
+import { testDatabaseConnection, supabase } from './lib/supabase';
 import { SimpleTableService } from './services/simpleTableService';
 import { DatabaseService } from './services/databaseService';
 import { ProcessingService } from './services/processingService';
@@ -632,6 +632,79 @@ app.get('/api/public/briefs/:id', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to get brief',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Check database stats (admin endpoint)
+app.get('/api/admin/database-stats', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    const stats = await databaseService.getDatabaseStats();
+    
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('❌ Error getting database stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get database stats',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Check sample articles (admin endpoint)
+app.get('/api/admin/sample-articles', async (req, res) => {
+  try {
+    const { data: articles, error } = await supabase
+      .from('news_articles')
+      .select('id, title, url, source, category, published_at')
+      .order('published_at', { ascending: false })
+      .limit(5);
+    
+    if (error) {
+      throw new Error(`Failed to fetch articles: ${error.message}`);
+    }
+    
+    res.json({
+      success: true,
+      data: articles
+    });
+  } catch (error) {
+    console.error('❌ Error getting sample articles:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get sample articles',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Fix existing briefs with actual article URLs (admin endpoint)
+app.post('/api/admin/fix-brief-sources', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    
+    console.log('🔧 Admin requested to fix brief source articles...');
+    const result = await databaseService.fixBriefSourceArticles();
+    
+    res.json({
+      success: true,
+      data: {
+        fixed: result.fixed,
+        errors: result.errors,
+        message: `Fixed ${result.fixed} briefs with actual article URLs`
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error fixing brief sources:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fix brief sources',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

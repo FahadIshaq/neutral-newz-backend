@@ -141,7 +141,7 @@ export class AIService {
         id: this.generateBriefId(articles[0].category, processedArticle.headline),
         title: processedArticle.headline || articles[0].title || 'News Update', // FIX: Ensure title is never empty
         summary: processedArticle.brief,
-        sourceArticles: articles.map(a => a.source),
+        sourceArticles: articles.map(a => a.url),
         category: articles[0].category,
         publishedAt: new Date(),
         tags: this.extractTags(articles),

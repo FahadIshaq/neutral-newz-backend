@@ -66,7 +66,7 @@ export class BriefService {
       id: this.generateBriefId(category, tags),
       title,
       summary,
-      sourceArticles: articles.map(a => a.id),
+      sourceArticles: articles.map(a => a.url),
       category,
       publishedAt: new Date(),
       tags,
