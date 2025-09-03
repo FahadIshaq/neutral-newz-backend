@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { NewsBrief, BriefReviewLog } from '../types';
+import { NewsBrief, BriefEditLog } from '../types';
 import { AIService } from './aiService';
 
 export class BriefReviewService {
@@ -427,7 +427,7 @@ export class BriefReviewService {
       publishedAt: brief.published_at ? new Date(brief.published_at) : new Date(),
       tags: brief.tags || [],
       status: brief.status,
-      reviewedBy: brief.reviewed_by,
+      // reviewedBy: brief.reviewed_by, // Field doesn't exist in NewsBrief type
       reviewedAt: brief.reviewed_at ? new Date(brief.reviewed_at) : undefined,
       reviewNotes: brief.review_notes,
       llmMetadata: brief.llm_metadata || {},

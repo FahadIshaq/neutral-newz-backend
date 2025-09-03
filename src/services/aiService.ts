@@ -125,22 +125,12 @@ export class AIService {
       // Process the combined content
       const processedArticle = await this.processRSSArticle(combinedContent[0]);
       
-      // Ensure the original article URL is included in sources
-      if (processedArticle.sources && processedArticle.sources.length > 0) {
-        // Add original article URL if not already present
-        if (!processedArticle.sources.includes(articles[0].url)) {
-          processedArticle.sources.push(articles[0].url);
-        }
-      } else {
-        // If no sources were generated, use the original article URL
-        processedArticle.sources = [articles[0].url];
-      }
-      
       // Convert to NewsBrief format
       const brief: NewsBrief = {
         id: this.generateBriefId(articles[0].category, processedArticle.headline),
         title: processedArticle.headline || articles[0].title || 'News Update', // FIX: Ensure title is never empty
         summary: processedArticle.brief,
+        // CRITICAL FIX: Always use the actual article URLs as source articles
         sourceArticles: articles.map(a => a.url),
         category: articles[0].category,
         publishedAt: new Date(),
@@ -159,10 +149,11 @@ export class AIService {
         }
       };
       
-      // FIX: Log the headline to debug the issue
+      // Log the brief generation details
       console.log(`🔍 AI: Generated brief with title: "${brief.title}"`);
       console.log(`🔍 AI: Original article title: "${articles[0].title}"`);
       console.log(`🔍 AI: Processed headline: "${processedArticle.headline}"`);
+      console.log(`🔍 AI: Source articles set to: ${JSON.stringify(brief.sourceArticles)}`);
 
       // Calculate costs (GPT-4o-mini pricing: $0.15 per 1M input tokens, $0.60 per 1M output tokens)
       const inputTokens = 1200; // Approximate for the enhanced prompt
