@@ -419,6 +419,64 @@ app.get('/api/system/daily-limits', async (req, res) => {
   }
 });
 
+// Search endpoint for briefs
+app.get('/api/public/briefs/search', async (req, res) => {
+  try {
+    const databaseService = new DatabaseService();
+    const { q: query, category, limit = 50 } = req.query;
+    
+    if (!query || typeof query !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Search query is required'
+      });
+    }
+    
+    // Get all published briefs
+    let briefs = await databaseService.getBriefsByStatus('published');
+    
+    // Filter by category if specified
+    if (category) {
+      briefs = briefs.filter(brief => brief.category === category);
+    }
+    
+    // Search in title and summary
+    const searchQuery = query.toLowerCase();
+    const filteredBriefs = briefs.filter(brief => 
+      brief.title.toLowerCase().includes(searchQuery) ||
+      brief.summary.toLowerCase().includes(searchQuery)
+    );
+    
+    // Sort by published date (newest first)
+    filteredBriefs.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    
+    // Limit results
+    const limitedBriefs = filteredBriefs.slice(0, parseInt(limit as string));
+    
+    // Transform briefs with resolved source URLs
+    const transformedBriefs = await Promise.all(
+      limitedBriefs.map(brief => databaseService.transformBriefDataWithResolvedSources(brief))
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        briefs: transformedBriefs,
+        total: filteredBriefs.length,
+        query: query,
+        category: category || 'all'
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error searching briefs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search briefs',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Public endpoints for news-digest frontend (no authentication required)
 app.get('/api/public/briefs', async (req, res) => {
   try {
