@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { NewsBrief, BriefEditLog } from '../types';
+import { NewsBrief, BriefEditLog, BriefReviewLog } from '../types';
 import { AIService } from './aiService';
 
 export class BriefReviewService {

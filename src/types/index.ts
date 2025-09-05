@@ -32,6 +32,8 @@ export interface NewsBrief {
   publishedAt: Date;
   tags: string[];
   status: 'published' | 'draft' | 'archived';
+  reviewedAt?: Date;
+  reviewNotes?: string;
   llmMetadata?: {
     modelVersion: string;
     promptVersion: string;
@@ -61,6 +63,18 @@ export interface BriefEditLog {
     tags: string[];
   };
   editNotes?: string;
+  timestamp: Date;
+}
+
+export interface BriefReviewLog {
+  id: string;
+  briefId: string;
+  reviewerId: string;
+  action: 'approve' | 'reject' | 'publish' | 'unpublish' | 'edit';
+  previousStatus: string;
+  newStatus: string;
+  reviewNotes?: string;
+  changesMade?: Record<string, any>;
   timestamp: Date;
 }
 
